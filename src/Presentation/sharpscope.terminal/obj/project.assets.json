@@ -1,11 +1,86 @@
 {
   "version": 3,
   "targets": {
-    "net9.0": {}
+    "net9.0": {
+      "sharpscope.adapters.csharp/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v9.0",
+        "dependencies": {
+          "sharpscope.domain": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/sharpscope.adapters.csharp.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/sharpscope.adapters.csharp.dll": {}
+        }
+      },
+      "sharpscope.application/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v9.0",
+        "dependencies": {
+          "sharpscope.domain": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/sharpscope.application.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/sharpscope.application.dll": {}
+        }
+      },
+      "sharpscope.domain/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v9.0",
+        "compile": {
+          "bin/placeholder/sharpscope.domain.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/sharpscope.domain.dll": {}
+        }
+      },
+      "sharpscope.infrastructure/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v9.0",
+        "dependencies": {
+          "sharpscope.domain": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/sharpscope.infrastructure.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/sharpscope.infrastructure.dll": {}
+        }
+      }
+    }
   },
-  "libraries": {},
+  "libraries": {
+    "sharpscope.adapters.csharp/1.0.0": {
+      "type": "project",
+      "path": "../../Infrastructure/sharpscope.adapters.csharp/sharpscope.adapters.csharp.csproj",
+      "msbuildProject": "../../Infrastructure/sharpscope.adapters.csharp/sharpscope.adapters.csharp.csproj"
+    },
+    "sharpscope.application/1.0.0": {
+      "type": "project",
+      "path": "../../Application/sharpscope.application/sharpscope.application.csproj",
+      "msbuildProject": "../../Application/sharpscope.application/sharpscope.application.csproj"
+    },
+    "sharpscope.domain/1.0.0": {
+      "type": "project",
+      "path": "../../Domain/sharpscope.domain/sharpscope.domain.csproj",
+      "msbuildProject": "../../Domain/sharpscope.domain/sharpscope.domain.csproj"
+    },
+    "sharpscope.infrastructure/1.0.0": {
+      "type": "project",
+      "path": "../../Infrastructure/sharpscope.infrastructure/sharpscope.infrastructure.csproj",
+      "msbuildProject": "../../Infrastructure/sharpscope.infrastructure/sharpscope.infrastructure.csproj"
+    }
+  },
   "projectFileDependencyGroups": {
-    "net9.0": []
+    "net9.0": [
+      "sharpscope.adapters.csharp >= 1.0.0",
+      "sharpscope.application >= 1.0.0",
+      "sharpscope.infrastructure >= 1.0.0"
+    ]
   },
   "packageFolders": {
     "C:\\Users\\mbraga\\.nuget\\packages\\": {},
@@ -39,7 +114,17 @@
       "frameworks": {
         "net9.0": {
           "targetAlias": "net9.0",
-          "projectReferences": {}
+          "projectReferences": {
+            "C:\\projetos\\sharpscope\\src\\Application\\sharpscope.application\\sharpscope.application.csproj": {
+              "projectPath": "C:\\projetos\\sharpscope\\src\\Application\\sharpscope.application\\sharpscope.application.csproj"
+            },
+            "C:\\projetos\\sharpscope\\src\\Infrastructure\\sharpscope.adapters.csharp\\sharpscope.adapters.csharp.csproj": {
+              "projectPath": "C:\\projetos\\sharpscope\\src\\Infrastructure\\sharpscope.adapters.csharp\\sharpscope.adapters.csharp.csproj"
+            },
+            "C:\\projetos\\sharpscope\\src\\Infrastructure\\sharpscope.infrastructure\\sharpscope.infrastructure.csproj": {
+              "projectPath": "C:\\projetos\\sharpscope\\src\\Infrastructure\\sharpscope.infrastructure\\sharpscope.infrastructure.csproj"
+            }
+          }
         }
       },
       "warningProperties": {

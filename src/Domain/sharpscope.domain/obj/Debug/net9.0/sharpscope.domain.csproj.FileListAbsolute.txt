@@ -1,0 +1,12 @@
+C:\projetos\sharpscope\src\Domain\sharpscope.domain\bin\Debug\net9.0\sharpscope.domain.deps.json
+C:\projetos\sharpscope\src\Domain\sharpscope.domain\bin\Debug\net9.0\sharpscope.domain.dll
+C:\projetos\sharpscope\src\Domain\sharpscope.domain\bin\Debug\net9.0\sharpscope.domain.pdb
+C:\projetos\sharpscope\src\Domain\sharpscope.domain\obj\Debug\net9.0\sharpscope.domain.GeneratedMSBuildEditorConfig.editorconfig
+C:\projetos\sharpscope\src\Domain\sharpscope.domain\obj\Debug\net9.0\sharpscope.domain.AssemblyInfoInputs.cache
+C:\projetos\sharpscope\src\Domain\sharpscope.domain\obj\Debug\net9.0\sharpscope.domain.AssemblyInfo.cs
+C:\projetos\sharpscope\src\Domain\sharpscope.domain\obj\Debug\net9.0\sharpscope.domain.csproj.CoreCompileInputs.cache
+C:\projetos\sharpscope\src\Domain\sharpscope.domain\obj\Debug\net9.0\sharpscope.domain.sourcelink.json
+C:\projetos\sharpscope\src\Domain\sharpscope.domain\obj\Debug\net9.0\sharpscope.domain.dll
+C:\projetos\sharpscope\src\Domain\sharpscope.domain\obj\Debug\net9.0\refint\sharpscope.domain.dll
+C:\projetos\sharpscope\src\Domain\sharpscope.domain\obj\Debug\net9.0\sharpscope.domain.pdb
+C:\projetos\sharpscope\src\Domain\sharpscope.domain\obj\Debug\net9.0\ref\sharpscope.domain.dll

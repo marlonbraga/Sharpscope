@@ -1,0 +1,39 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v9.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v9.0": {
+      "sharpscope.infrastructure/1.0.0": {
+        "dependencies": {
+          "sharpscope.domain": "1.0.0"
+        },
+        "runtime": {
+          "sharpscope.infrastructure.dll": {}
+        }
+      },
+      "sharpscope.domain/1.0.0": {
+        "runtime": {
+          "sharpscope.domain.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "sharpscope.infrastructure/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "sharpscope.domain/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

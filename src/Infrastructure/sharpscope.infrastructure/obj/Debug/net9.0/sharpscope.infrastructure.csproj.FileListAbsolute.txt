@@ -1,0 +1,16 @@
+C:\projetos\sharpscope\src\Infrastructure\sharpscope.infrastructure\bin\Debug\net9.0\sharpscope.infrastructure.deps.json
+C:\projetos\sharpscope\src\Infrastructure\sharpscope.infrastructure\bin\Debug\net9.0\sharpscope.infrastructure.dll
+C:\projetos\sharpscope\src\Infrastructure\sharpscope.infrastructure\bin\Debug\net9.0\sharpscope.infrastructure.pdb
+C:\projetos\sharpscope\src\Infrastructure\sharpscope.infrastructure\bin\Debug\net9.0\sharpscope.domain.dll
+C:\projetos\sharpscope\src\Infrastructure\sharpscope.infrastructure\bin\Debug\net9.0\sharpscope.domain.pdb
+C:\projetos\sharpscope\src\Infrastructure\sharpscope.infrastructure\obj\Debug\net9.0\sharpscope.infrastructure.csproj.AssemblyReference.cache
+C:\projetos\sharpscope\src\Infrastructure\sharpscope.infrastructure\obj\Debug\net9.0\sharpscope.infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+C:\projetos\sharpscope\src\Infrastructure\sharpscope.infrastructure\obj\Debug\net9.0\sharpscope.infrastructure.AssemblyInfoInputs.cache
+C:\projetos\sharpscope\src\Infrastructure\sharpscope.infrastructure\obj\Debug\net9.0\sharpscope.infrastructure.AssemblyInfo.cs
+C:\projetos\sharpscope\src\Infrastructure\sharpscope.infrastructure\obj\Debug\net9.0\sharpscope.infrastructure.csproj.CoreCompileInputs.cache
+C:\projetos\sharpscope\src\Infrastructure\sharpscope.infrastructure\obj\Debug\net9.0\sharpscope.infrastructure.sourcelink.json
+C:\projetos\sharpscope\src\Infrastructure\sharpscope.infrastructure\obj\Debug\net9.0\sharpsco.F8469F53.Up2Date
+C:\projetos\sharpscope\src\Infrastructure\sharpscope.infrastructure\obj\Debug\net9.0\sharpscope.infrastructure.dll
+C:\projetos\sharpscope\src\Infrastructure\sharpscope.infrastructure\obj\Debug\net9.0\refint\sharpscope.infrastructure.dll
+C:\projetos\sharpscope\src\Infrastructure\sharpscope.infrastructure\obj\Debug\net9.0\sharpscope.infrastructure.pdb
+C:\projetos\sharpscope\src\Infrastructure\sharpscope.infrastructure\obj\Debug\net9.0\ref\sharpscope.infrastructure.dll

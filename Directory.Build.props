@@ -1,3 +1,6 @@
 <Project>
-  <PropertyGroup />
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
 </Project>

@@ -411,6 +411,55 @@
         "build": {
           "build/net6.0/xunit.runner.visualstudio.props": {}
         }
+      },
+      "sharpscope.adapters.csharp/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v9.0",
+        "dependencies": {
+          "sharpscope.domain": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/sharpscope.adapters.csharp.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/sharpscope.adapters.csharp.dll": {}
+        }
+      },
+      "sharpscope.application/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v9.0",
+        "dependencies": {
+          "sharpscope.domain": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/sharpscope.application.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/sharpscope.application.dll": {}
+        }
+      },
+      "sharpscope.domain/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v9.0",
+        "compile": {
+          "bin/placeholder/sharpscope.domain.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/sharpscope.domain.dll": {}
+        }
+      },
+      "sharpscope.infrastructure/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v9.0",
+        "dependencies": {
+          "sharpscope.domain": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/sharpscope.infrastructure.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/sharpscope.infrastructure.dll": {}
+        }
       }
     }
   },
@@ -932,12 +981,36 @@
         "xunit.runner.visualstudio.2.8.2.nupkg.sha512",
         "xunit.runner.visualstudio.nuspec"
       ]
+    },
+    "sharpscope.adapters.csharp/1.0.0": {
+      "type": "project",
+      "path": "../../src/Infrastructure/sharpscope.adapters.csharp/sharpscope.adapters.csharp.csproj",
+      "msbuildProject": "../../src/Infrastructure/sharpscope.adapters.csharp/sharpscope.adapters.csharp.csproj"
+    },
+    "sharpscope.application/1.0.0": {
+      "type": "project",
+      "path": "../../src/Application/sharpscope.application/sharpscope.application.csproj",
+      "msbuildProject": "../../src/Application/sharpscope.application/sharpscope.application.csproj"
+    },
+    "sharpscope.domain/1.0.0": {
+      "type": "project",
+      "path": "../../src/Domain/sharpscope.domain/sharpscope.domain.csproj",
+      "msbuildProject": "../../src/Domain/sharpscope.domain/sharpscope.domain.csproj"
+    },
+    "sharpscope.infrastructure/1.0.0": {
+      "type": "project",
+      "path": "../../src/Infrastructure/sharpscope.infrastructure/sharpscope.infrastructure.csproj",
+      "msbuildProject": "../../src/Infrastructure/sharpscope.infrastructure/sharpscope.infrastructure.csproj"
     }
   },
   "projectFileDependencyGroups": {
     "net9.0": [
       "Microsoft.NET.Test.Sdk >= 17.12.0",
       "coverlet.collector >= 6.0.2",
+      "sharpscope.adapters.csharp >= 1.0.0",
+      "sharpscope.application >= 1.0.0",
+      "sharpscope.domain >= 1.0.0",
+      "sharpscope.infrastructure >= 1.0.0",
       "xunit >= 2.9.2",
       "xunit.runner.visualstudio >= 2.8.2"
     ]
@@ -974,7 +1047,20 @@
       "frameworks": {
         "net9.0": {
           "targetAlias": "net9.0",
-          "projectReferences": {}
+          "projectReferences": {
+            "C:\\projetos\\sharpscope\\src\\Application\\sharpscope.application\\sharpscope.application.csproj": {
+              "projectPath": "C:\\projetos\\sharpscope\\src\\Application\\sharpscope.application\\sharpscope.application.csproj"
+            },
+            "C:\\projetos\\sharpscope\\src\\Domain\\sharpscope.domain\\sharpscope.domain.csproj": {
+              "projectPath": "C:\\projetos\\sharpscope\\src\\Domain\\sharpscope.domain\\sharpscope.domain.csproj"
+            },
+            "C:\\projetos\\sharpscope\\src\\Infrastructure\\sharpscope.adapters.csharp\\sharpscope.adapters.csharp.csproj": {
+              "projectPath": "C:\\projetos\\sharpscope\\src\\Infrastructure\\sharpscope.adapters.csharp\\sharpscope.adapters.csharp.csproj"
+            },
+            "C:\\projetos\\sharpscope\\src\\Infrastructure\\sharpscope.infrastructure\\sharpscope.infrastructure.csproj": {
+              "projectPath": "C:\\projetos\\sharpscope\\src\\Infrastructure\\sharpscope.infrastructure\\sharpscope.infrastructure.csproj"
+            }
+          }
         }
       },
       "warningProperties": {
