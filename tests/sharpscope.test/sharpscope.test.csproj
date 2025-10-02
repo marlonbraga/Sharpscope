@@ -5,6 +5,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <EnableDefaultItems>true</EnableDefaultItems>
+    <DefaultItemExcludes>
+      $(DefaultItemExcludes);
+      $(MSBuildProjectDirectory)\obj\**;
+      $(MSBuildProjectDirectory)\bin\**
+    </DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,10 +25,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Domain\sharpscope.domain\sharpscope.domain.csproj" />
-    <ProjectReference Include="..\..\src\Application\sharpscope.application\sharpscope.application.csproj" />
-    <ProjectReference Include="..\..\src\Infrastructure\sharpscope.adapters.csharp\sharpscope.adapters.csharp.csproj" />
-    <ProjectReference Include="..\..\src\Infrastructure\sharpscope.infrastructure\sharpscope.infrastructure.csproj" />
+    <ProjectReference Include="..\..\Domain\Sharpscope.Domain\Sharpscope.Domain.csproj" />
+    <ProjectReference Include="..\..\Application\Sharpscope.Application\sharpscope.application.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\Sharpscope.Adapters.Csharp\sharpscope.adapters.csharp.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\Sharpscope.Infrastructure\sharpscope.infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
