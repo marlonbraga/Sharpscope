@@ -14,84 +14,13 @@ public sealed class CouplingMetricsCalculator
     /// </summary>
     public IReadOnlyList<NamespaceCouplingMetrics> ComputeNamespaceCoupling(CodeModel model)
     {
-        var nsList = model.Codebase.Modules
-            .SelectMany(m => m.Namespaces)
-            .ToList();
+        var namespaces = CollectNamespaces(model);
+        var nsNames = new HashSet<string>(namespaces.Select(n => n.Name), StringComparer.Ordinal);
 
-        var allNsNames = new HashSet<string>(nsList.Select(n => n.Name));
+        var nsOut = BuildNamespaceOutEdges(model, nsNames);
+        var nsIn = BuildNamespaceInEdges(nsOut, nsNames);
 
-        // Outgoing edges per namespace (default to empty set)
-        var nsOut = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-        foreach (var nsName in allNsNames)
-        {
-            nsOut[nsName] = new HashSet<string>(StringComparer.Ordinal);
-        }
-
-        foreach (var kv in model.DependencyGraph.NamespaceEdges)
-        {
-            if (!nsOut.ContainsKey(kv.Key))
-                nsOut[kv.Key] = new HashSet<string>(StringComparer.Ordinal);
-
-            foreach (var target in kv.Value ?? Array.Empty<string>())
-            {
-                // Avoid self-loops when counting CE; only cross-namespace deps matter for coupling
-                if (!string.Equals(kv.Key, target, StringComparison.Ordinal))
-                    nsOut[kv.Key].Add(target);
-            }
-        }
-
-        // Build incoming edges map (for CA)
-        var nsIn = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-        foreach (var nsName in allNsNames)
-        {
-            nsIn[nsName] = new HashSet<string>(StringComparer.Ordinal);
-        }
-
-        foreach (var (source, targets) in nsOut)
-        {
-            foreach (var t in targets)
-            {
-                if (!nsIn.ContainsKey(t))
-                    nsIn[t] = new HashSet<string>(StringComparer.Ordinal);
-                nsIn[t].Add(source);
-            }
-        }
-
-        // Helper to count abstract types within a namespace (interfaces count as abstract)
-        static (int totalTypes, int abstractTypes) CountAbstractness(NamespaceNode ns)
-        {
-            var total = ns.Types.Count;
-            var abs = ns.Types.Count(t => t.IsAbstract || t.Kind == TypeKind.Interface);
-            return (total, abs);
-        }
-
-        var result = new List<NamespaceCouplingMetrics>(nsList.Count);
-        foreach (var ns in nsList)
-        {
-            var name = ns.Name;
-
-            var ca = nsIn.TryGetValue(name, out var inSet) ? inSet.Count : 0;
-            var ce = nsOut.TryGetValue(name, out var outSet) ? outSet.Count : 0;
-
-            var denom = ca + ce;
-            var instability = denom > 0 ? ce / (double)denom : 0.0;
-
-            var (totalTypes, abstractTypes) = CountAbstractness(ns);
-            var abstractness = totalTypes > 0 ? abstractTypes / (double)totalTypes : 0.0;
-
-            var d = Math.Abs(abstractness + instability - 1.0);
-
-            result.Add(new NamespaceCouplingMetrics(
-                Namespace: name,
-                Ca: ca,
-                Ce: ce,
-                Instability: instability,
-                Abstractness: abstractness,
-                NormalizedDistance: d
-            ));
-        }
-
-        return result;
+        return ComputeNamespaceMetrics(namespaces, nsIn, nsOut);
     }
 
     /// <summary>
@@ -99,59 +28,187 @@ public sealed class CouplingMetricsCalculator
     /// </summary>
     public IReadOnlyList<TypeCouplingMetrics> ComputeTypeCoupling(CodeModel model)
     {
-        // Collect all model types (internal universe)
+        var (allTypes, typeNames) = CollectTypes(model);
+
+        var typeOutInternal = BuildTypeOutInternal(model, typeNames);
+        var typeInInternal = BuildTypeInInternal(typeOutInternal, typeNames);
+
+        return ComputeTypeMetrics(allTypes, typeOutInternal, typeInInternal);
+    }
+
+    #region Namespaces
+
+    private static List<NamespaceNode> CollectNamespaces(CodeModel model) =>
+        model.Codebase.Modules.SelectMany(m => m.Namespaces).ToList();
+
+    private static Dictionary<string, HashSet<string>> BuildNamespaceOutEdges(
+        CodeModel model,
+        HashSet<string> allNsNames)
+    {
+        var nsOut = allNsNames.ToDictionary(n => n, _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
+
+        foreach (var kv in model.DependencyGraph.NamespaceEdges)
+        {
+            if (!nsOut.TryGetValue(kv.Key, out var set))
+            {
+                set = new HashSet<string>(StringComparer.Ordinal);
+                nsOut[kv.Key] = set;
+            }
+
+            foreach (var target in kv.Value ?? Array.Empty<string>())
+            {
+                // Ignore self-loops
+                if (!string.Equals(kv.Key, target, StringComparison.Ordinal))
+                    set.Add(target);
+            }
+        }
+
+        return nsOut;
+    }
+
+    private static Dictionary<string, HashSet<string>> BuildNamespaceInEdges(
+        Dictionary<string, HashSet<string>> nsOut,
+        HashSet<string> allNsNames)
+    {
+        var nsIn = allNsNames.ToDictionary(n => n, _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
+
+        foreach (var (source, targets) in nsOut)
+        {
+            foreach (var t in targets)
+            {
+                if (!nsIn.TryGetValue(t, out var set))
+                {
+                    set = new HashSet<string>(StringComparer.Ordinal);
+                    nsIn[t] = set;
+                }
+                set.Add(source);
+            }
+        }
+
+        return nsIn;
+    }
+
+    private static IReadOnlyList<NamespaceCouplingMetrics> ComputeNamespaceMetrics(
+        List<NamespaceNode> namespaces,
+        IReadOnlyDictionary<string, HashSet<string>> nsIn,
+        IReadOnlyDictionary<string, HashSet<string>> nsOut)
+    {
+        var result = new List<NamespaceCouplingMetrics>(namespaces.Count);
+
+        foreach (var ns in namespaces)
+        {
+            var name = ns.Name;
+
+            var ca = nsIn.TryGetValue(name, out var inSet) ? inSet.Count : 0;
+            var ce = nsOut.TryGetValue(name, out var outSet) ? outSet.Count : 0;
+
+            var instability = ComputeInstability(ca, ce);
+            var abstractness = ComputeAbstractness(ns);
+            var distance = Math.Abs(abstractness + instability - 1.0);
+
+            result.Add(new NamespaceCouplingMetrics(
+                Namespace: name,
+                Ca: ca,
+                Ce: ce,
+                Instability: instability,
+                Abstractness: abstractness,
+                NormalizedDistance: distance
+            ));
+        }
+
+        return result;
+    }
+
+    private static double ComputeInstability(int ca, int ce)
+    {
+        var denom = ca + ce;
+        return denom > 0 ? ce / (double)denom : 0.0;
+    }
+
+    private static double ComputeAbstractness(NamespaceNode ns)
+    {
+        var total = ns.Types.Count;
+        if (total == 0) return 0.0;
+
+        var abs = ns.Types.Count(t => t.IsAbstract || t.Kind == TypeKind.Interface);
+        return abs / (double)total;
+    }
+
+    #endregion
+
+    #region Types
+
+    private static (List<TypeNode> allTypes, HashSet<string> typeNames) CollectTypes(CodeModel model)
+    {
         var allTypes = model.Codebase.Modules
             .SelectMany(m => m.Namespaces)
             .SelectMany(n => n.Types)
             .ToList();
 
         var typeNames = new HashSet<string>(allTypes.Select(t => t.FullName), StringComparer.Ordinal);
+        return (allTypes, typeNames);
+    }
 
-        // Build a normalized internal dependency graph (distinct targets only)
-        var typeOutInternal = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-        foreach (var t in typeNames)
-            typeOutInternal[t] = new HashSet<string>(StringComparer.Ordinal);
+    private static Dictionary<string, HashSet<string>> BuildTypeOutInternal(
+        CodeModel model,
+        HashSet<string> typeNames)
+    {
+        var outMap = typeNames.ToDictionary(n => n, _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
 
         foreach (var kv in model.DependencyGraph.TypeEdges)
         {
-            if (!typeOutInternal.ContainsKey(kv.Key))
-                typeOutInternal[kv.Key] = new HashSet<string>(StringComparer.Ordinal);
+            if (!outMap.TryGetValue(kv.Key, out var set))
+            {
+                set = new HashSet<string>(StringComparer.Ordinal);
+                outMap[kv.Key] = set;
+            }
 
             foreach (var target in kv.Value ?? Array.Empty<string>())
             {
                 if (typeNames.Contains(target) && !string.Equals(kv.Key, target, StringComparison.Ordinal))
-                    typeOutInternal[kv.Key].Add(target);
+                    set.Add(target);
             }
         }
 
-        // Build incoming map for FAN-IN
-        var typeInInternal = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-        foreach (var t in typeNames)
-            typeInInternal[t] = new HashSet<string>(StringComparer.Ordinal);
+        return outMap;
+    }
+
+    private static Dictionary<string, HashSet<string>> BuildTypeInInternal(
+        Dictionary<string, HashSet<string>> typeOutInternal,
+        HashSet<string> typeNames)
+    {
+        var inMap = typeNames.ToDictionary(n => n, _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
 
         foreach (var (source, targets) in typeOutInternal)
         {
             foreach (var t in targets)
             {
-                if (!typeInInternal.ContainsKey(t))
-                    typeInInternal[t] = new HashSet<string>(StringComparer.Ordinal);
-                typeInInternal[t].Add(source);
+                if (!inMap.TryGetValue(t, out var set))
+                {
+                    set = new HashSet<string>(StringComparer.Ordinal);
+                    inMap[t] = set;
+                }
+                set.Add(source);
             }
         }
 
-        // Compute metrics per type
+        return inMap;
+    }
+
+    private static IReadOnlyList<TypeCouplingMetrics> ComputeTypeMetrics(
+        List<TypeNode> allTypes,
+        IReadOnlyDictionary<string, HashSet<string>> typeOutInternal,
+        IReadOnlyDictionary<string, HashSet<string>> typeInInternal)
+    {
         var list = new List<TypeCouplingMetrics>(allTypes.Count);
+
         foreach (var t in allTypes)
         {
-            // DEP: distinct dependencies declared by the type (including external)
-            var depDistinct = new HashSet<string>(t.DependsOnTypes ?? Array.Empty<string>(), StringComparer.Ordinal);
-            var dep = depDistinct.Count;
+            var dep = DistinctDependencyCount(t);
 
-            // I-DEP and FAN-OUT: internal out-degree
             var iDep = typeOutInternal.TryGetValue(t.FullName, out var outs) ? outs.Count : 0;
             var fanOut = iDep;
 
-            // FAN-IN: number of other types that depend on this type (internal)
             var fanIn = typeInInternal.TryGetValue(t.FullName, out var ins) ? ins.Count : 0;
 
             list.Add(new TypeCouplingMetrics(
@@ -165,4 +222,14 @@ public sealed class CouplingMetricsCalculator
 
         return list;
     }
+
+    private static int DistinctDependencyCount(TypeNode t)
+    {
+        if (t.DependsOnTypes is null || t.DependsOnTypes.Count == 0)
+            return 0;
+
+        return new HashSet<string>(t.DependsOnTypes, StringComparer.Ordinal).Count;
+    }
+
+    #endregion
 }
