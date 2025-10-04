@@ -1,13 +1,18 @@
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+using Sharpscope.Domain.Models;
+
 namespace Sharpscope.Domain.Contracts;
 
 /// <summary>
-/// Detects which languages are present in a source tree.
+/// Detects the primary language of a materialized source tree (e.g., "csharp").
 /// </summary>
 public interface ILanguageDetector
 {
     /// <summary>
-    /// Returns a list of language identifiers found in the directory
-    /// (e.g., ["csharp", "python"]).
+    /// Returns a lowercase language id (e.g., "csharp"), or null if unknown/ambiguous.
     /// </summary>
-    Task<IReadOnlyList<string>> DetectAsync(DirectoryInfo root, CancellationToken ct);
+    Task<string?> DetectLanguageAsync(DirectoryInfo root, CancellationToken ct);
 }

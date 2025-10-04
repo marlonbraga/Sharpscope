@@ -34,9 +34,4 @@
     <ProjectReference Include="..\..\Infrastructure\Sharpscope.Infrastructure\sharpscope.infrastructure.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="InfrastructureTests\Detection\" />
-    <Folder Include="InfrastructureTests\Reports\" />
-  </ItemGroup>
-
 </Project>
