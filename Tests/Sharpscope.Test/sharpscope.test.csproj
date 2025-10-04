@@ -35,7 +35,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="AdapterCSharpTests\Roslyn\Workspace\" />
     <Folder Include="InfrastructureTests\Detection\" />
     <Folder Include="InfrastructureTests\Reports\" />
   </ItemGroup>
