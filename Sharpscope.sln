@@ -25,7 +25,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "4. Intrastructure", "4. Int
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "sharpscope.test", "Tests\Sharpscope.Test\sharpscope.test.csproj", "{7D15CDE7-5E40-469B-AB44-31012E07C914}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sharpscope.Test", "Tests\Sharpscope.Test\Sharpscope.Test.csproj", "{7D15CDE7-5E40-469B-AB44-31012E07C914}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "0. Project Files", "0. Project Files", "{009983CE-BBF9-4DA2-8286-531125076DA3}"
 	ProjectSection(SolutionItems) = preProject

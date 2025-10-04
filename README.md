@@ -145,7 +145,7 @@ flowchart LR
 ├─ Domain/Sharpscope.Domain
 │  ├─ Models/       ├─ Contracts/    ├─ Calculators/  └─ Exceptions/
 ├─ Infrastructure
-│  ├─ Sharpscope.Adapters.Csharp/Roslyn/
+│  ├─ Sharpscope.Adapters.CSharp/Roslyn/
 │  └─ Sharpscope.Infrastructure/
 │     ├─ Sources/   ├─ Detection/    └─ Reports/
 ├─ Presentation

@@ -2,7 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Application\sharpscope.application\sharpscope.application.csproj" />
-    <ProjectReference Include="..\..\Infrastructure\sharpscope.adapters.csharp\sharpscope.adapters.csharp.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\Sharpscope.Adapters.csharp\Sharpscope.Adapters.Csharp.csproj" />
     <ProjectReference Include="..\..\Infrastructure\sharpscope.infrastructure\sharpscope.infrastructure.csproj" />
   </ItemGroup>
 
