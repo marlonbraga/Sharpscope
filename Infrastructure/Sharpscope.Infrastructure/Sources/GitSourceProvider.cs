@@ -10,7 +10,7 @@ namespace Sharpscope.Infrastructure.Sources;
 /// ISourceProvider that materializes sources from a Git repository using <see cref="GitCli"/>.
 /// Local path materialization is not supported here (use LocalSourceProvider).
 /// </summary>
-public sealed class GitSourceProvider : ISourceProvider
+public sealed class GitSourceProvider : IGitSourceProvider
 {
     #region Fields & Ctor
 

@@ -7,51 +7,61 @@ using Sharpscope.Domain.Contracts;
 using Sharpscope.Infrastructure.Sources;
 using Xunit;
 
-namespace sharpscope.test.InfrastructureTests.Sources;
+namespace Sharpscope.Test.InfrastructureTests.Sources;
 
 public sealed class GitOrLocalSourceProviderTests
 {
-    [Fact(DisplayName = "MaterializeFromLocalAsync delegates to local provider")]
-    public async Task MaterializeFromLocalAsync_DelegatesToLocal()
+    [Fact(DisplayName = "MaterializeFromGitAsync delegates to IGitSourceProvider")]
+    public async Task MaterializeFromGitAsync_Delegates_To_Git()
     {
         // Arrange
-        var local = Substitute.For<ISourceProvider>();
-        var git = Substitute.For<ISourceProvider>();
+        var git = Substitute.For<IGitSourceProvider>();
+        var local = Substitute.For<ILocalSourceProvider>();
 
-        var expected = new DirectoryInfo(Path.Combine(Path.GetTempPath(), "sharpscope-tests", "local"));
-        local.MaterializeFromLocalAsync(Arg.Any<DirectoryInfo>(), Arg.Any<CancellationToken>())
-             .Returns(Task.FromResult(expected));
+        var temp = CreateTempDir();
+        git.MaterializeFromGitAsync("https://example/repo.git", Arg.Any<CancellationToken>())
+           .Returns(Task.FromResult(temp));
 
-        var provider = new GitOrLocalSourceProvider(local, git);
+        var sut = new GitOrLocalSourceProvider(git, local);
 
         // Act
-        var result = await provider.MaterializeFromLocalAsync(new DirectoryInfo("C:\\fake"), CancellationToken.None);
+        var dir = await sut.MaterializeFromGitAsync("https://example/repo.git", CancellationToken.None);
 
         // Assert
-        result.FullName.ShouldBe(expected.FullName);
-        await local.Received(1).MaterializeFromLocalAsync(Arg.Any<DirectoryInfo>(), Arg.Any<CancellationToken>());
+        dir.FullName.ShouldBe(temp.FullName);
+        await git.Received(1).MaterializeFromGitAsync("https://example/repo.git", Arg.Any<CancellationToken>());
+        await local.DidNotReceive().MaterializeFromLocalAsync(Arg.Any<DirectoryInfo>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact(DisplayName = "MaterializeFromLocalAsync delegates to ILocalSourceProvider")]
+    public async Task MaterializeFromLocalAsync_Delegates_To_Local()
+    {
+        var git = Substitute.For<IGitSourceProvider>();
+        var local = Substitute.For<ILocalSourceProvider>();
+
+        var src = CreateTempDir();
+        var dst = CreateTempDir();
+
+        local.MaterializeFromLocalAsync(src, Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult(dst));
+
+        var sut = new GitOrLocalSourceProvider(git, local);
+
+        var dir = await sut.MaterializeFromLocalAsync(src, CancellationToken.None);
+
+        dir.FullName.ShouldBe(dst.FullName);
+        await local.Received(1).MaterializeFromLocalAsync(src, Arg.Any<CancellationToken>());
         await git.DidNotReceive().MaterializeFromGitAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
-    [Fact(DisplayName = "MaterializeFromGitAsync delegates to git provider")]
-    public async Task MaterializeFromGitAsync_DelegatesToGit()
+    #region helpers
+
+    private static DirectoryInfo CreateTempDir()
     {
-        // Arrange
-        var local = Substitute.For<ISourceProvider>();
-        var git = Substitute.For<ISourceProvider>();
-
-        var expected = new DirectoryInfo(Path.Combine(Path.GetTempPath(), "sharpscope-tests", "git"));
-        git.MaterializeFromGitAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-           .Returns(Task.FromResult(expected));
-
-        var provider = new GitOrLocalSourceProvider(local, git);
-
-        // Act
-        var result = await provider.MaterializeFromGitAsync("https://example/repo.git", CancellationToken.None);
-
-        // Assert
-        result.FullName.ShouldBe(expected.FullName);
-        await git.Received(1).MaterializeFromGitAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
-        await local.DidNotReceive().MaterializeFromLocalAsync(Arg.Any<DirectoryInfo>(), Arg.Any<CancellationToken>());
+        var path = Path.Combine(Path.GetTempPath(), "sharpscope-tests", "infra-src", System.Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(path);
+        return new DirectoryInfo(path);
     }
+
+    #endregion
 }

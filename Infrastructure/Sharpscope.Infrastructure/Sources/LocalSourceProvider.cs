@@ -10,7 +10,7 @@ namespace Sharpscope.Infrastructure.Sources;
 /// ISourceProvider that materializes sources from a local directory into a temp working directory,
 /// applying include/exclude filters.
 /// </summary>
-public sealed class LocalSourceProvider : ISourceProvider
+public sealed class LocalSourceProvider : ILocalSourceProvider
 {
     #region Fields & Ctor
 
