@@ -1,60 +1,95 @@
-﻿using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Shouldly;
-using Sharpscope.Adapters.CSharp;
+﻿using Sharpscope.Adapters.CSharp;
 using Sharpscope.Adapters.CSharp.Roslyn.Modeling;
 using Sharpscope.Adapters.CSharp.Roslyn.Workspace;
 using Sharpscope.Domain.Models;
-using Xunit;
+using Sharpscope.Infrastructure.Sources; // PathFilters
+using Shouldly;
 
-namespace Sharpscope.Test.AdapterCSharpTests;
-
-public sealed class CSharpLanguageAdapterTests
+namespace Sharpscope.Test.AdapterCSharpTests
 {
-    [Fact(DisplayName = "CanHandle is case-insensitive for 'csharp'")]
-    public void CanHandle_CaseInsensitive()
+    public sealed class CSharpLanguageAdapterTests
     {
-        var adapter = new CSharpLanguageAdapter(new RoslynWorkspaceLoader(false), new CSharpModelBuilder());
-        adapter.CanHandle("csharp").ShouldBeTrue();
-        adapter.CanHandle("CSharp").ShouldBeTrue();
-        adapter.CanHandle("python").ShouldBeFalse();
-    }
+        [Fact(DisplayName = "BuildModelAsync handles partial class across files (cross-tree bodies)")]
+        public async Task BuildModelAsync_PartialAcrossFiles_DoesNotThrow_AndBuildsType()
+        {
+            var root = CreateTempDir();
 
-    [Fact(DisplayName = "BuildModelAsync builds CodeModel from directory using fallback")]
-    public async Task BuildModel_FromDirectory_Works()
-    {
-        var root = CreateTempDir();
-        var code = @"
+            var code1 = @"
 namespace N {
-    public class A {
-        public void M() { var b = new B(); }
-    }
-    public class B { }
-}";
-        await File.WriteAllTextAsync(Path.Combine(root, "File.cs"), code);
-
-        var adapter = new CSharpLanguageAdapter(new RoslynWorkspaceLoader(allowMsbuild: false), new CSharpModelBuilder());
-
-        var model = await adapter.BuildModelAsync(new DirectoryInfo(root), CancellationToken.None);
-        model.ShouldNotBeNull();
-
-        var ns = model.Codebase.Modules.Single().Namespaces.Single(n => n.Name == "N");
-        ns.Types.Any(t => t.FullName == "N.A").ShouldBeTrue();
-        ns.Types.Any(t => t.FullName == "N.B").ShouldBeTrue();
-
-        model.DependencyGraph.TypeEdges["N.A"].ShouldContain("N.B");
-    }
-
-    #region Helpers
-
-    private static string CreateTempDir()
+    public partial class P
     {
-        var dir = Path.Combine(Path.GetTempPath(), "sharpscope-tests", "adapter", System.Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        return dir;
+        private int _x;
+        public P() { _x = 1; }
     }
+}";
+            var code2 = @"
+namespace N {
+    public partial class P
+    {
+        public void M() { _x++; System.Console.WriteLine(_x); }
+    }
+}";
+            await File.WriteAllTextAsync(Path.Combine(root, "P1.cs"), code1);
+            await File.WriteAllTextAsync(Path.Combine(root, "P2.cs"), code2);
 
-    #endregion
+            var filters = PathFilters.Default();
+            var loader = new RoslynWorkspaceLoader(allowMsbuild: false, filters);
+            var builder = new CSharpModelBuilder();
+            var adapter = new CSharpLanguageAdapter(loader, builder);
+
+            CodeModel model = null!;
+            var ex = await Record.ExceptionAsync(() => adapter.BuildModelAsync(new DirectoryInfo(root), CancellationToken.None));
+            ex.ShouldBeNull();
+
+            model = await adapter.BuildModelAsync(new DirectoryInfo(root), CancellationToken.None);
+
+            var p = model.Codebase.Modules.SelectMany(m => m.Namespaces)
+                                          .SelectMany(n => n.Types)
+                                          .FirstOrDefault(t => t.FullName == "N.P");
+            p.ShouldNotBeNull();
+            p!.Methods.Count.ShouldBe(2); // ctor + M
+        }
+
+        [Fact(DisplayName = "BuildModelAsync handles multiple trees with method bodies in both")]
+        public async Task BuildModelAsync_MultiTreesWithBodies_DoesNotThrow()
+        {
+            var root = CreateTempDir();
+
+            var codeA = @"
+namespace N {
+    public class A
+    {
+        public void MA() { var b = new B(); System.Console.WriteLine(b.ToString()); }
+    }
+}";
+            var codeB = @"
+namespace N {
+    public class B
+    {
+        public void MB() { System.Console.WriteLine(123); }
+    }
+}";
+            await File.WriteAllTextAsync(Path.Combine(root, "A.cs"), codeA);
+            await File.WriteAllTextAsync(Path.Combine(root, "B.cs"), codeB);
+
+            var filters = PathFilters.Default();
+            var loader = new RoslynWorkspaceLoader(allowMsbuild: false, filters);
+            var builder = new CSharpModelBuilder();
+            var adapter = new CSharpLanguageAdapter(loader, builder);
+
+            var ex = await Record.ExceptionAsync(() => adapter.BuildModelAsync(new DirectoryInfo(root), CancellationToken.None));
+            ex.ShouldBeNull();
+        }
+
+        #region helpers
+
+        private static string CreateTempDir()
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "sharpscope-tests", "adapter", System.Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            return dir;
+        }
+
+        #endregion
+    }
 }

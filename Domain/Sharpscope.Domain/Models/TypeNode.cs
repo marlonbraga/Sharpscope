@@ -23,5 +23,6 @@ public enum TypeKind
     Struct,
     Interface,
     Enum,
-    Record
+    Record,
+    Delegate
 }
