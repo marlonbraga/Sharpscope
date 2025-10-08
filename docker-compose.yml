@@ -1,0 +1,6 @@
+services:
+  sharpscope.api:
+    image: ${DOCKER_REGISTRY-}sharpscopeapi
+    build:
+      context: .
+      dockerfile: Presentation/Sharpscope.Api/Dockerfile

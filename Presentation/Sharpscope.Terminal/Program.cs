@@ -1,14 +1,7 @@
-﻿using System;
-using System.ComponentModel;
-using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Collections.Generic;
+﻿using System.ComponentModel;
 using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console;
 using Spectre.Console.Cli;
-
 using Sharpscope.Application.DI;
 using Sharpscope.Application.UseCases;
 using Sharpscope.Domain.Contracts;
@@ -18,8 +11,11 @@ public static class Program
     public static async Task<int> Main(string[] args)
     {
         Console.WriteLine("Sharpscope CLI");
-            
-        args = ["analyze", "--path", "C:\\projetos\\Sharpscope", "--format", "json"];
+        var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+        //args = ["analyze", "--path", "C:\\projetos\\Sharpscope", "--format", "json", "--out", $"C:\\projetos\\Sharpscope\\docs\\reports\\{timestamp}_diagnostic.json"];
+        //args = ["analyze", "--repo", "https://github.com/marlonbraga/Sharpscope", "--format", "json", "--out", $"C:\\projetos\\Sharpscope\\docs\\reports\\{timestamp}_diagnostic.json"];
+        
+        args = ["analyze", "--path", "C://Users//mbraga//source//repos//GanhoDeCapital", "--format", "json", "--out", $"C:\\projetos\\Sharpscope\\docs\\reports\\{timestamp}_diagnostic.json"];
 
         var services = new ServiceCollection()
             .AddSharpscope(allowMsbuild: false);

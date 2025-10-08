@@ -48,7 +48,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IGitSourceProvider, GitSourceProvider>();
         services.AddTransient<ILocalSourceProvider, LocalSourceProvider>();
         services.AddTransient<ISourceProvider, GitOrLocalSourceProvider>();
-        services.AddTransient<TemporaryDirectory>();
+        services.AddTransient(_ => TemporaryDirectory.Create());
 
         // -------------------------
         // Infrastructure: Detection
