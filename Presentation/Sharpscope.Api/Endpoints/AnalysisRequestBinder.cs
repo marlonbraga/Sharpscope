@@ -8,123 +8,72 @@ internal sealed class AnalysisRequestBinder : IAsyncDisposable
 {
     public AnalyzeSolutionRequest? Request { get; private set; }
     public IResult? Error { get; private set; }
-    private readonly IAsyncDisposable? _workspace;
 
-    private AnalysisRequestBinder(AnalyzeSolutionRequest? req, IResult? error, IAsyncDisposable? ws)
+    private AnalysisRequestBinder(AnalyzeSolutionRequest? req, IResult? error)
     {
         Request = req;
         Error = error;
-        _workspace = ws;
     }
 
-    public static async Task<AnalysisRequestBinder> BindAsync(HttpRequest http, string? formatOverride, CancellationToken ct)
+    public static async Task<AnalysisRequestBinder> BindAsync(
+        HttpRequest http,
+        string? formatOverride,
+        CancellationToken ct)
     {
-        // multipart/form-data -> ZIP
         if (http.ContentType?.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase) == true)
+            return new AnalysisRequestBinder(null, Results.StatusCode(StatusCodes.Status415UnsupportedMediaType));
+
+        var body = await TryReadJsonAsync<AnalyzeSolutionRequest>(http, ct);
+        if (body is null)
+            return Fail("Invalid or empty JSON body.");
+
+        string[] formats = !string.IsNullOrWhiteSpace(formatOverride)
+            ? new[] { FormatUtils.Normalize(formatOverride) }
+            : (body.Options?.Formats ?? Array.Empty<string>())
+                .Select(FormatUtils.Normalize)
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Distinct()
+                .DefaultIfEmpty("json")
+                .ToArray();
+
+        var dto = new AnalyzeSolutionRequest
         {
-            var form = await http.ReadFormAsync(ct);
-            var file = form.Files.GetFile("file");
-            if (file is null || file.Length == 0)
-                return Fail("Form file 'file' (ZIP) is required.");
-
-            if (!file.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                return new AnalysisRequestBinder(null, Results.StatusCode(StatusCodes.Status415UnsupportedMediaType), null);
-
-            var formats = FormatUtils.CollectFormats(formatOverride, form);
-
-            string? outputDir = form["outputDirectory"];
-            string? outputName = form["outputFileName"];
-            string? disposition = form["disposition"];
-            bool? download = bool.TryParse(form["download"], out var d) ? d : (bool?)null;
-
-            var ws = await ZipWorkspace.CreateAsync(file, ct);
-
-            var dto = new AnalyzeSolutionRequest
+            Path = body.Path,
+            RepoUrl = body.RepoUrl,
+            Options = new AnalyzeSolutionOptions
             {
-                Path = ws.ExtractedDirectory.FullName,
-                Options = new AnalyzeSolutionOptions
-                {
-                    Formats = formats,
-                    OutputDirectory = string.IsNullOrWhiteSpace(outputDir) ? null : outputDir,
-                    OutputFileName = string.IsNullOrWhiteSpace(outputName) ? null : outputName,
-                    Disposition = string.IsNullOrWhiteSpace(disposition) ? null : disposition,
-                    Download = download
-                }
-            };
+                Formats = formats,
+                OutputDirectory = body.Options?.OutputDirectory,
+                OutputFileName = body.Options?.OutputFileName,
+                Disposition = body.Options?.Disposition,
+                Download = body.Options?.Download
+            }
+        };
 
-            return new AnalysisRequestBinder(dto, null, ws);
-        }
+        return new AnalysisRequestBinder(dto, null);
 
-        // JSON (ou “qualquer coisa” que contenha JSON)
+        static AnalysisRequestBinder Fail(string message) =>
+            new(null, Results.BadRequest(message));
+    }
+
+    private static async Task<T?> TryReadJsonAsync<T>(HttpRequest http, CancellationToken ct)
+    {
+        if (http.HasJsonContentType())
+            return await http.ReadFromJsonAsync<T>(cancellationToken: ct);
+
+        using var reader = new StreamReader(http.Body);
+        var raw = await reader.ReadToEndAsync();
+        if (string.IsNullOrWhiteSpace(raw)) return default;
+
         try
         {
-            // Se o Content-Type não for JSON, ainda assim tentamos desserializar manualmente
-            AnalyzeSolutionRequest? body = null;
-
-            if (http.HasJsonContentType())
-            {
-                body = await http.ReadFromJsonAsync<AnalyzeSolutionRequest>(cancellationToken: ct);
-            }
-            else
-            {
-                using var reader = new StreamReader(http.Body);
-                var raw = await reader.ReadToEndAsync();
-                if (!string.IsNullOrWhiteSpace(raw))
-                    body = JsonSerializer.Deserialize<AnalyzeSolutionRequest>(raw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            }
-
-            if (body is null) return Fail("Invalid or empty JSON body.");
-
-            // ?format=... sobrepõe
-            if (!string.IsNullOrWhiteSpace(formatOverride))
-            {
-                var f = FormatUtils.Normalize(formatOverride);
-                body = new AnalyzeSolutionRequest
-                {
-                    Path = body.Path,
-                    RepoUrl = body.RepoUrl,
-                    Options = new AnalyzeSolutionOptions
-                    {
-                        Formats = new[] { f },
-                        OutputDirectory = body.Options.OutputDirectory,
-                        OutputFileName = body.Options.OutputFileName,
-                        Disposition = body.Options.Disposition,
-                        Download = body.Options.Download
-                    }
-                };
-            }
-            else
-            {
-                var normalized = body.Options.Formats.Select(FormatUtils.Normalize).Distinct().ToArray();
-                body = new AnalyzeSolutionRequest
-                {
-                    Path = body.Path,
-                    RepoUrl = body.RepoUrl,
-                    Options = new AnalyzeSolutionOptions
-                    {
-                        Formats = normalized,
-                        OutputDirectory = body.Options.OutputDirectory,
-                        OutputFileName = body.Options.OutputFileName,
-                        Disposition = body.Options.Disposition,
-                        Download = body.Options.Download
-                    }
-                };
-            }
-
-            return new AnalysisRequestBinder(body, null, null);
+            return JsonSerializer.Deserialize<T>(raw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         }
         catch (JsonException)
         {
-            return Fail("Malformed JSON body.");
+            return default;
         }
-
-        static AnalysisRequestBinder Fail(string message) =>
-            new(null, Results.BadRequest(message), null);
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        if (_workspace is not null)
-            await _workspace.DisposeAsync();
-    }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

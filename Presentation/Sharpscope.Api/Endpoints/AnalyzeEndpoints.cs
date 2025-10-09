@@ -27,11 +27,9 @@ public static class AnalysesEndpoints
 
     private static async Task<IResult> RunAsync(HttpRequest http, AnalyzeSolutionUseCase useCase, CancellationToken ct)
     {
-        if (http.ContentType?.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase) == true)
-            return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+        if (IsMultipart(http)) return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
 
         var formatOverride = http.GetFormatOverride();
-
         await using var bound = await AnalysisRequestBinder.BindAsync(http, formatOverride, ct);
         if (bound.Error is { } err) return err;
 
@@ -49,59 +47,71 @@ public static class AnalysesEndpoints
         HttpRequest http,
         CancellationToken ct)
     {
-        if (!(http.ContentType?.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase) ?? false))
-            return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+        if (!IsMultipart(http)) return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
 
+        var err = ValidateZip(file);
+        if (err is not null) return err;
+
+        var formats = CollectFormats(meta, http.GetFormatOverride());
+        await using var ws = await ZipWorkspace.CreateAsync(file, ct);
+
+        var dto = BuildUploadDto(ws.ExtractedDirectory.FullName, meta, formats);
+        var disposition = DispositionUtils.Resolve(http, dto.Options);
+
+        var ucReq = RequestMapper.ToUseCase(dto);
+        var outFile = await useCase.ExecuteAsync(ucReq, ct);
+
+        return ResultWriter.WriteFile(outFile, disposition);
+    }
+    private static bool IsMultipart(HttpRequest http) =>
+        http.ContentType?.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static IResult? ValidateZip(IFormFile file)
+    {
         if (file is null || file.Length == 0)
             return Results.BadRequest("Form file 'file' (ZIP) is required.");
-
         if (!file.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
             return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+        return null;
+    }
 
-        var collected = new List<string>();
+    private static string[] CollectFormats(UploadMeta meta, string? queryFormat)
+    {
+        var list = new List<string>();
 
-        var qFmt = http.GetFormatOverride();
-        if (!string.IsNullOrWhiteSpace(qFmt))
-            collected.Add(FormatUtils.Normalize(qFmt));
+        if (!string.IsNullOrWhiteSpace(queryFormat))
+            list.Add(FormatUtils.Normalize(queryFormat));
 
         if (!string.IsNullOrWhiteSpace(meta.Format))
-            collected.Add(FormatUtils.Normalize(meta.Format));
+            list.Add(FormatUtils.Normalize(meta.Format));
 
-        if (meta.Formats is not null && meta.Formats.Length > 0)
+        if (meta.Formats is { Length: > 0 })
         {
             foreach (var ff in meta.Formats)
             {
                 if (string.IsNullOrWhiteSpace(ff)) continue;
                 foreach (var part in ff.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries))
-                    collected.Add(FormatUtils.Normalize(part));
+                    list.Add(FormatUtils.Normalize(part));
             }
         }
 
-        if (collected.Count == 0) collected.Add("json");
-        var distinctFormats = collected.Distinct().ToArray();
+        return list.Distinct().DefaultIfEmpty("json").ToArray();
+    }
 
-        await using var ws = await ZipWorkspace.CreateAsync(file, ct);
-
-        var dto = new AnalyzeSolutionRequest
+    private static AnalyzeSolutionRequest BuildUploadDto(string extractedPath, UploadMeta meta, string[] formats) =>
+        new()
         {
-            Path = ws.ExtractedDirectory.FullName,
+            Path = extractedPath,
             RepoUrl = null,
             Options = new AnalyzeSolutionOptions
             {
-                Formats = distinctFormats,
+                Formats = formats,
                 OutputDirectory = string.IsNullOrWhiteSpace(meta.OutputDirectory) ? null : meta.OutputDirectory,
                 OutputFileName = string.IsNullOrWhiteSpace(meta.OutputFileName) ? null : meta.OutputFileName,
                 Disposition = string.IsNullOrWhiteSpace(meta.Disposition) ? null : meta.Disposition,
                 Download = meta.Download
             }
         };
-
-        var resolvedDisposition = DispositionUtils.Resolve(http, dto.Options);
-        var ucReq = RequestMapper.ToUseCase(dto);
-        var outFile = await useCase.ExecuteAsync(ucReq, ct);
-
-        return ResultWriter.WriteFile(outFile, resolvedDisposition);
-    }
 
     public sealed class UploadMeta
     {
