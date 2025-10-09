@@ -9,11 +9,11 @@ namespace Sharpscope.Application.DTOs;
 /// </summary>
 public sealed class AnalyzeSolutionResult
 {
-    public AnalyzeSolutionResult(DirectoryInfo WorkDirectory, MetricsResult Metrics, IReadOnlyList<FileInfo> Reports)
+    public AnalyzeSolutionResult(DirectoryInfo workDirectory, MetricsResult metrics, IReadOnlyList<FileInfo> reports)
     {
-        this.WorkDirectory = WorkDirectory;
-        this.Metrics = Metrics;
-        this.Reports = Reports;
+        WorkDirectory = workDirectory;
+        Metrics = metrics;
+        Reports = reports;
     }
 
     public DirectoryInfo WorkDirectory { get; }
