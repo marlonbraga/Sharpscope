@@ -10,14 +10,16 @@ public static class AnalysesEndpoints
     {
         var group = app.MapGroup("/analyses");
 
+        // JSON-only: run analysis from repoUrl OR path
         group.MapPost("/run", RunAsync)
              .Accepts<AnalyzeSolutionRequest>("application/json")
              .Produces(StatusCodes.Status200OK)
              .Produces(StatusCodes.Status400BadRequest)
              .Produces(StatusCodes.Status415UnsupportedMediaType);
 
+        // Multipart-only: upload a ZIP and run analysis
         group.MapPost("/upload", UploadAsync)
-             .DisableAntiforgery()
+             .DisableAntiforgery() // anti-forgery is not needed for API uploads
              .Produces(StatusCodes.Status200OK)
              .Produces(StatusCodes.Status400BadRequest)
              .Produces(StatusCodes.Status415UnsupportedMediaType);
@@ -25,11 +27,17 @@ public static class AnalysesEndpoints
         return app;
     }
 
-    private static async Task<IResult> RunAsync(HttpRequest http, AnalyzeSolutionUseCase useCase, CancellationToken ct)
+    // POST /analyses/run  (application/json)
+    private static async Task<IResult> RunAsync(
+        HttpRequest http,
+        AnalyzeSolutionUseCase useCase,
+        CancellationToken ct)
     {
-        if (IsMultipart(http)) return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+        if (IsMultipart(http))
+            return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
 
         var formatOverride = http.GetFormatOverride();
+
         await using var bound = await AnalysisRequestBinder.BindAsync(http, formatOverride, ct);
         if (bound.Error is { } err) return err;
 
@@ -40,6 +48,7 @@ public static class AnalysesEndpoints
         return ResultWriter.WriteFile(file, disposition);
     }
 
+    // POST /analyses/upload  (multipart/form-data)
     private static async Task<IResult> UploadAsync(
         IFormFile file,
         [FromForm] UploadMeta meta,
@@ -47,15 +56,28 @@ public static class AnalysesEndpoints
         HttpRequest http,
         CancellationToken ct)
     {
-        if (!IsMultipart(http)) return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+        if (!IsMultipart(http))
+            return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
 
         var err = ValidateZip(file);
         if (err is not null) return err;
 
-        var formats = CollectFormats(meta, http.GetFormatOverride());
+        // Format: query override wins; else meta.Format; default json
+        var queryFmt = http.GetFormatOverride();
+        var format = FormatUtils.Normalize(!string.IsNullOrWhiteSpace(queryFmt) ? queryFmt : meta.Format);
+
         await using var ws = await ZipWorkspace.CreateAsync(file, ct);
 
-        var dto = BuildUploadDto(ws.ExtractedDirectory.FullName, meta, formats);
+        var dto = new AnalyzeSolutionRequest
+        {
+            RepoUrl = null,
+            Options = new AnalyzeSolutionOptions
+            {
+                Format = format,
+                Disposition = string.IsNullOrWhiteSpace(meta.Disposition) ? null : meta.Disposition
+            }
+        };
+
         var disposition = DispositionUtils.Resolve(http, dto.Options);
 
         var ucReq = RequestMapper.ToUseCase(dto);
@@ -63,6 +85,9 @@ public static class AnalysesEndpoints
 
         return ResultWriter.WriteFile(outFile, disposition);
     }
+
+    // ---------- helpers (keep endpoint methods short) ----------
+
     private static bool IsMultipart(HttpRequest http) =>
         http.ContentType?.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase) == true;
 
@@ -70,56 +95,20 @@ public static class AnalysesEndpoints
     {
         if (file is null || file.Length == 0)
             return Results.BadRequest("Form file 'file' (ZIP) is required.");
+
         if (!file.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
             return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+
         return null;
     }
 
-    private static string[] CollectFormats(UploadMeta meta, string? queryFormat)
-    {
-        var list = new List<string>();
-
-        if (!string.IsNullOrWhiteSpace(queryFormat))
-            list.Add(FormatUtils.Normalize(queryFormat));
-
-        if (!string.IsNullOrWhiteSpace(meta.Format))
-            list.Add(FormatUtils.Normalize(meta.Format));
-
-        if (meta.Formats is { Length: > 0 })
-        {
-            foreach (var ff in meta.Formats)
-            {
-                if (string.IsNullOrWhiteSpace(ff)) continue;
-                foreach (var part in ff.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries))
-                    list.Add(FormatUtils.Normalize(part));
-            }
-        }
-
-        return list.Distinct().DefaultIfEmpty("json").ToArray();
-    }
-
-    private static AnalyzeSolutionRequest BuildUploadDto(string extractedPath, UploadMeta meta, string[] formats) =>
-        new()
-        {
-            Path = extractedPath,
-            RepoUrl = null,
-            Options = new AnalyzeSolutionOptions
-            {
-                Formats = formats,
-                OutputDirectory = string.IsNullOrWhiteSpace(meta.OutputDirectory) ? null : meta.OutputDirectory,
-                OutputFileName = string.IsNullOrWhiteSpace(meta.OutputFileName) ? null : meta.OutputFileName,
-                Disposition = string.IsNullOrWhiteSpace(meta.Disposition) ? null : meta.Disposition,
-                Download = meta.Download
-            }
-        };
-
+    // Form meta (besides the file)
     public sealed class UploadMeta
     {
+        /// <summary>Report format: "json" | "csv" | "md" | "sarif". Default: "json".</summary>
         public string? Format { get; init; }
-        public string[]? Formats { get; init; }
-        public string? OutputDirectory { get; init; }
-        public string? OutputFileName { get; init; }
+
+        /// <summary>Response disposition: "inline" or "attachment".</summary>
         public string? Disposition { get; init; }
-        public bool? Download { get; init; }
     }
 }

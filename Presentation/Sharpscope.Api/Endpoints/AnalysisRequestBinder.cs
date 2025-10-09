@@ -4,6 +4,10 @@ using Sharpscope.Application.DTOs;
 
 namespace Sharpscope.Api.Endpoints;
 
+/// <summary>
+/// JSON-only binder for POST /analyses/run.
+/// It tolerates wrong Content-Type by attempting a manual JSON parse.
+/// </summary>
 internal sealed class AnalysisRequestBinder : IAsyncDisposable
 {
     public AnalyzeSolutionRequest? Request { get; private set; }
@@ -20,33 +24,31 @@ internal sealed class AnalysisRequestBinder : IAsyncDisposable
         string? formatOverride,
         CancellationToken ct)
     {
+        // Defensive: this endpoint is JSON-only
         if (http.ContentType?.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase) == true)
             return new AnalysisRequestBinder(null, Results.StatusCode(StatusCodes.Status415UnsupportedMediaType));
 
+        // Try to read JSON (even if Content-Type is not application/json)
         var body = await TryReadJsonAsync<AnalyzeSolutionRequest>(http, ct);
         if (body is null)
             return Fail("Invalid or empty JSON body.");
 
-        string[] formats = !string.IsNullOrWhiteSpace(formatOverride)
-            ? new[] { FormatUtils.Normalize(formatOverride) }
-            : (body.Options?.Formats ?? Array.Empty<string>())
-                .Select(FormatUtils.Normalize)
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .Distinct()
-                .DefaultIfEmpty("json")
-                .ToArray();
+        var hasRepo = !string.IsNullOrWhiteSpace(body.RepoUrl);
+        if (!hasRepo)
+            return Fail("Provide 'repoUrl'.");
+
+        // Format: query override wins; else body.Options.Format; default json
+        var format = !string.IsNullOrWhiteSpace(formatOverride)
+            ? FormatUtils.Normalize(formatOverride)
+            : FormatUtils.Normalize(body.Options?.Format);
 
         var dto = new AnalyzeSolutionRequest
         {
-            Path = body.Path,
             RepoUrl = body.RepoUrl,
             Options = new AnalyzeSolutionOptions
             {
-                Formats = formats,
-                OutputDirectory = body.Options?.OutputDirectory,
-                OutputFileName = body.Options?.OutputFileName,
-                Disposition = body.Options?.Disposition,
-                Download = body.Options?.Download
+                Format = format,
+                Disposition = body.Options?.Disposition
             }
         };
 
@@ -75,5 +77,5 @@ internal sealed class AnalysisRequestBinder : IAsyncDisposable
         }
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask; // nothing to clean
 }
