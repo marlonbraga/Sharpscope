@@ -67,7 +67,7 @@ public static class ServiceCollectionExtensions
         // Adapters C#: Roslyn loader + builder + adapter
         // -------------------------
         services.AddTransient(_ => new RoslynWorkspaceLoader(allowMsbuild, _.GetRequiredService<PathFilters>()));
-        services.AddTransient<CSharpModelBuilder>();
+        services.AddTransient<CodeGraphBuilder>();
         services.AddTransient<ILanguageAdapter, CSharpLanguageAdapter>();
 
         return services;

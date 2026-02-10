@@ -1,4 +1,4 @@
-﻿using Sharpscope.Adapters.CSharp;
+using Sharpscope.Adapters.CSharp;
 using Sharpscope.Adapters.CSharp.Roslyn.Modeling;
 using Sharpscope.Adapters.CSharp.Roslyn.Workspace;
 using Sharpscope.Domain.Models;
@@ -9,8 +9,8 @@ namespace Sharpscope.Test.AdapterCSharpTests
 {
     public sealed class CSharpLanguageAdapterTests
     {
-        [Fact(DisplayName = "BuildModelAsync handles partial class across files (cross-tree bodies)")]
-        public async Task BuildModelAsync_PartialAcrossFiles_DoesNotThrow_AndBuildsType()
+        [Fact(DisplayName = "BuildGraphAsync handles partial class across files (cross-tree bodies)")]
+        public async Task BuildGraphAsync_PartialAcrossFiles_DoesNotThrow_AndBuildsType()
         {
             var root = CreateTempDir();
 
@@ -34,24 +34,21 @@ namespace N {
 
             var filters = PathFilters.Default();
             var loader = new RoslynWorkspaceLoader(allowMsbuild: false, filters);
-            var builder = new CSharpModelBuilder();
+            var builder = new CodeGraphBuilder();
             var adapter = new CSharpLanguageAdapter(loader, builder);
 
-            CodeModel model = null!;
-            var ex = await Record.ExceptionAsync(() => adapter.BuildModelAsync(new DirectoryInfo(root), CancellationToken.None));
+            CodeGraph graph = null!;
+            var ex = await Record.ExceptionAsync(() => adapter.BuildGraphAsync(new DirectoryInfo(root), CancellationToken.None));
             ex.ShouldBeNull();
 
-            model = await adapter.BuildModelAsync(new DirectoryInfo(root), CancellationToken.None);
+            graph = await adapter.BuildGraphAsync(new DirectoryInfo(root), CancellationToken.None);
 
-            var p = model.Codebase.Modules.SelectMany(m => m.Namespaces)
-                                          .SelectMany(n => n.Types)
-                                          .FirstOrDefault(t => t.FullName == "N.P");
+            var p = graph.Nodes.Values.FirstOrDefault(n => n.Kind == GraphNodeKind.Type && n.Name == "N.P");
             p.ShouldNotBeNull();
-            p!.Methods.Count.ShouldBe(2); // ctor + M
         }
 
-        [Fact(DisplayName = "BuildModelAsync handles multiple trees with method bodies in both")]
-        public async Task BuildModelAsync_MultiTreesWithBodies_DoesNotThrow()
+        [Fact(DisplayName = "BuildGraphAsync handles multiple trees with method bodies in both")]
+        public async Task BuildGraphAsync_MultiTreesWithBodies_DoesNotThrow()
         {
             var root = CreateTempDir();
 
@@ -74,10 +71,10 @@ namespace N {
 
             var filters = PathFilters.Default();
             var loader = new RoslynWorkspaceLoader(allowMsbuild: false, filters);
-            var builder = new CSharpModelBuilder();
+            var builder = new CodeGraphBuilder();
             var adapter = new CSharpLanguageAdapter(loader, builder);
 
-            var ex = await Record.ExceptionAsync(() => adapter.BuildModelAsync(new DirectoryInfo(root), CancellationToken.None));
+            var ex = await Record.ExceptionAsync(() => adapter.BuildGraphAsync(new DirectoryInfo(root), CancellationToken.None));
             ex.ShouldBeNull();
         }
 

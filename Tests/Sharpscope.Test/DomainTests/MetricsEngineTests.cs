@@ -3,6 +3,7 @@ using System.Linq;
 using Shouldly;
 using Sharpscope.Domain.Calculators;
 using Sharpscope.Domain.Models;
+using Sharpscope.Test.Helpers;
 using Xunit;
 
 namespace Sharpscope.Test.DomainTests;
@@ -55,12 +56,13 @@ public sealed class MetricsEngineTests
             });
 
         var model = new CodeModel(codebase, graph);
+        var cg = TestGraphFactory.FromCodeModel(model);
 
         // Use the real calculators via MetricsEngine default ctor
         var engine = new MetricsEngine();
 
         // Act
-        var result = engine.Compute(model);
+        var result = engine.Compute(cg);
 
         // ---- Assertions (high-level consistency) ----
 
@@ -84,7 +86,7 @@ public sealed class MetricsEngineTests
         result.Namespaces.Count.ShouldBe(2);
 
         // Namespace coupling: N1 -> N2; N2 has no outgoing
-        var nsByName = result.NamespaceCoupling.ToDictionary(x => x.Namespace);
+        var nsByName = result.NamespaceCoupling.Values.ToDictionary(x => x.Namespace);
         nsByName["N1"].Ce.ShouldBe(1);
         nsByName["N1"].Ca.ShouldBe(0);
         nsByName["N1"].Instability.ShouldBe(1.0, 1e-12);
@@ -98,7 +100,7 @@ public sealed class MetricsEngineTests
         nsByName["N2"].NormalizedDistance.ShouldBe(1.0, 1e-12);
 
         // Type coupling: A depends on C (internal) + System.String (external)
-        var typeByName = result.TypeCoupling.ToDictionary(x => x.TypeFullName);
+        var typeByName = result.TypeCoupling.Values.ToDictionary(x => x.TypeFullName);
         typeByName["N1.A"].Dependencies.ShouldBe(2);
         typeByName["N1.A"].InternalDependencies.ShouldBe(1);
         typeByName["N1.A"].FanOut.ShouldBe(1);

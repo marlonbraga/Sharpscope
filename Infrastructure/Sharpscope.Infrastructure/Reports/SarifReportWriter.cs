@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -18,14 +17,14 @@ public sealed class SarifReportWriter : IReportWriter
 {
     public string Format => "sarif";
 
-    public async Task WriteAsync(MetricsResult result, FileInfo outputFile, CancellationToken ct)
+    public async Task WriteAsync(AnalysisSnapshot snapshot, FileInfo outputFile, CancellationToken ct)
     {
-        if (result is null) throw new ArgumentNullException(nameof(result));
+        if (snapshot is null) throw new ArgumentNullException(nameof(snapshot));
         if (outputFile is null) throw new ArgumentNullException(nameof(outputFile));
 
         outputFile.Directory?.Create();
 
-        var props = CollectCounts(result);
+        var props = CollectCounts(snapshot);
 
         // Use dictionaries to allow the "$schema" property name
         var root = new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -42,7 +41,7 @@ public sealed class SarifReportWriter : IReportWriter
                         {
                             ["name"] = "Sharpscope",
                             ["informationUri"] = "https://github.com/marlonbraga/sharpscope",
-                            ["version"] = "0.1.0"
+                            ["version"] = snapshot.Metadata.ToolVersion
                         }
                     },
                     ["properties"] = props,
@@ -69,20 +68,17 @@ public sealed class SarifReportWriter : IReportWriter
         await JsonSerializer.SerializeAsync(fs, root, opts, ct).ConfigureAwait(false);
     }
 
-    private static Dictionary<string, int> CollectCounts(MetricsResult result)
+    private static Dictionary<string, int> CollectCounts(AnalysisSnapshot snapshot)
     {
-        var dict = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var p in result.GetType().GetProperties())
+        var dict = new Dictionary<string, int>(StringComparer.Ordinal)
         {
-            var val = p.GetValue(result);
-            if (val is null) continue;
-            if (val is IEnumerable en && val is not string)
-            {
-                var count = 0;
-                foreach (var _ in en) count++;
-                dict[p.Name] = count;
-            }
-        }
+            ["Namespaces"] = snapshot.Metrics.Namespaces.Count,
+            ["Types"] = snapshot.Metrics.Types.Count,
+            ["Methods"] = snapshot.Metrics.Methods.Count,
+            ["Projects"] = snapshot.Metrics.Projects.Count,
+            ["NamespaceCoupling"] = snapshot.Metrics.NamespaceCoupling.Count,
+            ["TypeCoupling"] = snapshot.Metrics.TypeCoupling.Count
+        };
         return dict;
     }
 }

@@ -6,5 +6,5 @@ namespace Sharpscope.Domain.Contracts;
 public interface IReportWriter
 {
     string Format { get; } // "json" | "md" | "csv" | "sarif"
-    Task WriteAsync(MetricsResult result, FileInfo output, CancellationToken ct);
+    Task WriteAsync(AnalysisSnapshot snapshot, FileInfo output, CancellationToken ct);
 }

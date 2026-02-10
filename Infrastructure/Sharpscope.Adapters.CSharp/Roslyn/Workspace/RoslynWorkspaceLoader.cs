@@ -42,6 +42,15 @@ public sealed class RoslynWorkspaceLoader
         if (string.IsNullOrWhiteSpace(path))
             throw new ArgumentException("Path is required.", nameof(path));
 
+        var result = await LoadWorkspaceAsync(path, ct).ConfigureAwait(false);
+        return MergeCompilations(result.Projects.Select(p => p.Compilation));
+    }
+
+    public async Task<RoslynWorkspaceResult> LoadWorkspaceAsync(string path, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new ArgumentException("Path is required.", nameof(path));
+
         path = Path.GetFullPath(path);
 
         if (_allowMsbuild && (path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) ||
@@ -49,7 +58,7 @@ public sealed class RoslynWorkspaceLoader
         {
             try
             {
-                return await LoadWithMsbuildAsync(path, ct).ConfigureAwait(false);
+                return await LoadWithMsbuildWorkspaceAsync(path, ct).ConfigureAwait(false);
             }
             catch
             {
@@ -60,7 +69,36 @@ public sealed class RoslynWorkspaceLoader
         var dir = Directory.Exists(path) ? new DirectoryInfo(path)
                                          : new DirectoryInfo(Path.GetDirectoryName(path)!);
 
-        return await LoadFromDirectoryAsync(dir, ct).ConfigureAwait(false);
+        if (_allowMsbuild && dir.Exists)
+        {
+            var sln = Directory.EnumerateFiles(dir.FullName, "*.sln", SearchOption.TopDirectoryOnly).FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(sln))
+            {
+                try
+                {
+                    return await LoadWithMsbuildWorkspaceAsync(sln, ct).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Fall back if MSBuild not available or project cannot be loaded
+                }
+            }
+
+            var projects = Directory.EnumerateFiles(dir.FullName, "*.csproj", SearchOption.AllDirectories).ToList();
+            if (projects.Count > 0)
+            {
+                try
+                {
+                    return await LoadMultipleProjectsAsync(dir.FullName, projects, ct).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Fall back
+                }
+            }
+        }
+
+        return await LoadFromDirectoryWorkspaceAsync(dir, ct).ConfigureAwait(false);
     }
 
     #endregion
@@ -86,7 +124,7 @@ public sealed class RoslynWorkspaceLoader
         }
     }
 
-    private static async Task<Compilation> LoadWithMsbuildAsync(string path, CancellationToken ct)
+    private static async Task<RoslynWorkspaceResult> LoadWithMsbuildWorkspaceAsync(string path, CancellationToken ct)
     {
         EnsureMsBuildRegistered();
 
@@ -96,44 +134,71 @@ public sealed class RoslynWorkspaceLoader
         if (path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase))
         {
             var solution = await workspace.OpenSolutionAsync(path, cancellationToken: ct).ConfigureAwait(false);
-            return await MergeSolutionCompilationsAsync(solution, ct).ConfigureAwait(false);
+            return await BuildResultFromSolutionAsync(solution, path, ct).ConfigureAwait(false);
         }
         else
         {
             var project = await workspace.OpenProjectAsync(path, cancellationToken: ct).ConfigureAwait(false);
             var comp = await project.GetCompilationAsync(ct).ConfigureAwait(false)
                       ?? CSharpCompilation.Create(project.Name);
-            return comp;
+
+            var root = Directory.Exists(path) ? path : Path.GetDirectoryName(path)!;
+            var item = new ProjectCompilation(project.Name, project.FilePath, comp);
+            return new RoslynWorkspaceResult(root, null, new[] { item });
         }
     }
 
-    private static async Task<Compilation> MergeSolutionCompilationsAsync(Solution solution, CancellationToken ct)
+    private static async Task<RoslynWorkspaceResult> BuildResultFromSolutionAsync(
+        Solution solution,
+        string solutionPath,
+        CancellationToken ct)
     {
         var csharpProjects = solution.Projects.Where(p => p.Language == LanguageNames.CSharp).ToList();
-        var trees = new List<SyntaxTree>();
-        var refs = new HashSet<MetadataReference>();
+        var list = new List<ProjectCompilation>();
 
         foreach (var p in csharpProjects)
         {
             var comp = await p.GetCompilationAsync(ct).ConfigureAwait(false) as CSharpCompilation;
             if (comp is null) continue;
-
-            trees.AddRange(comp.SyntaxTrees);
-            foreach (var r in comp.References) refs.Add(r);
+            list.Add(new ProjectCompilation(p.Name, p.FilePath, comp));
         }
 
-        if (refs.Count == 0)
-            AddBaselineReferences(refs);
+        var root = Directory.Exists(solutionPath)
+            ? solutionPath
+            : Path.GetDirectoryName(solutionPath)!;
 
-        return CSharpCompilation.Create("Sharpscope.Merged", trees, refs,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        return new RoslynWorkspaceResult(root, solutionPath, list);
+    }
+
+    private static async Task<RoslynWorkspaceResult> LoadMultipleProjectsAsync(
+        string rootPath,
+        IReadOnlyList<string> projectPaths,
+        CancellationToken ct)
+    {
+        EnsureMsBuildRegistered();
+
+        using var workspace = MSBuildWorkspace.Create();
+        workspace.WorkspaceFailed += (_, __) => { };
+
+        var list = new List<ProjectCompilation>();
+        foreach (var proj in projectPaths)
+        {
+            ct.ThrowIfCancellationRequested();
+            var project = await workspace.OpenProjectAsync(proj, cancellationToken: ct).ConfigureAwait(false);
+            if (project.Language != LanguageNames.CSharp) continue;
+            var comp = await project.GetCompilationAsync(ct).ConfigureAwait(false)
+                      ?? CSharpCompilation.Create(project.Name);
+            list.Add(new ProjectCompilation(project.Name, project.FilePath, comp));
+        }
+
+        return new RoslynWorkspaceResult(rootPath, null, list);
     }
 
     #endregion
 
     #region Directory path (fallback)
 
-    private async Task<Compilation> LoadFromDirectoryAsync(DirectoryInfo dir, CancellationToken ct)
+    private async Task<RoslynWorkspaceResult> LoadFromDirectoryWorkspaceAsync(DirectoryInfo dir, CancellationToken ct)
     {
         if (dir is null || !dir.Exists)
             throw new DirectoryNotFoundException($"Directory not found: {dir?.FullName}");
@@ -153,7 +218,28 @@ public sealed class RoslynWorkspaceLoader
         var refs = new HashSet<MetadataReference>();
         AddBaselineReferences(refs);
 
-        return CSharpCompilation.Create("Sharpscope.FromDirectory", trees, refs,
+        var comp = CSharpCompilation.Create("Sharpscope.FromDirectory", trees, refs,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var project = new ProjectCompilation("Workspace", dir.FullName, comp);
+        return new RoslynWorkspaceResult(dir.FullName, null, new[] { project });
+    }
+
+    private static Compilation MergeCompilations(IEnumerable<Compilation> comps)
+    {
+        var trees = new List<SyntaxTree>();
+        var refs = new HashSet<MetadataReference>();
+
+        foreach (var comp in comps.OfType<CSharpCompilation>())
+        {
+            trees.AddRange(comp.SyntaxTrees);
+            foreach (var r in comp.References) refs.Add(r);
+        }
+
+        if (refs.Count == 0)
+            AddBaselineReferences(refs);
+
+        return CSharpCompilation.Create("Sharpscope.Merged", trees, refs,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
 

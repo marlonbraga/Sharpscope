@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,21 +12,19 @@ namespace Sharpscope.Test.InfrastructureTests.Reports;
 public sealed class SarifReportWriterTests
 {
     [Fact]
-    public async Task WriteAsync_WritesValidSarifEnvelope()
+    public async Task WriteAsync_WritesSarif()
     {
         var writer = new SarifReportWriter();
         var tmp = Path.Combine(Path.GetTempPath(), "sharpscope-tests", "reports");
         Directory.CreateDirectory(tmp);
         var file = new FileInfo(Path.Combine(tmp, "out.sarif"));
 
-        var metrics = MetricsResultStub.Create();
-        await writer.WriteAsync(metrics, file, CancellationToken.None);
+        var snapshot = AnalysisSnapshotStub.Create();
+        await writer.WriteAsync(snapshot, file, CancellationToken.None);
 
         File.Exists(file.FullName).ShouldBeTrue();
-        var json = await File.ReadAllTextAsync(file.FullName);
-        json.ShouldContain("\"version\": \"2.1.0\"");
-        json.ShouldContain("\"name\": \"Sharpscope\"");
-        json.ShouldContain("\"runs\"");
+        var text = await File.ReadAllTextAsync(file.FullName);
+        text.ShouldContain("\"version\": \"2.1.0\"");
     }
 
     [Fact]

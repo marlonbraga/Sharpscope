@@ -30,7 +30,7 @@ public sealed class RoslynWorkspaceLoaderTests
 
         // Assert
         comp.ShouldNotBeNull();
-        comp.AssemblyName.ShouldBe("Sharpscope.FromDirectory");
+        comp.AssemblyName.ShouldBe("Sharpscope.Merged");
         comp.SyntaxTrees.ShouldNotBeEmpty();
         comp.SyntaxTrees.ShouldContain(t => t.FilePath == aPath);
         comp.SyntaxTrees.ShouldContain(t => t.FilePath == bPath);

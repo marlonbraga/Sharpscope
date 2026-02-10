@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Shouldly;
@@ -11,18 +11,20 @@ namespace Sharpscope.Test.InfrastructureTests.Reports;
 public sealed class CsvReportWriterTests
 {
     [Fact]
-    public async Task WriteAsync_WritesHeaderLine()
+    public async Task WriteAsync_WritesCsv()
     {
         var writer = new CsvReportWriter();
         var tmp = Path.Combine(Path.GetTempPath(), "sharpscope-tests", "reports");
         Directory.CreateDirectory(tmp);
         var file = new FileInfo(Path.Combine(tmp, "out.csv"));
 
-        var metrics = MetricsResultStub.Create();
-        await writer.WriteAsync(metrics, file, CancellationToken.None);
+        var snapshot = AnalysisSnapshotStub.Create();
+        await writer.WriteAsync(snapshot, file, CancellationToken.None);
 
+        File.Exists(file.FullName).ShouldBeTrue();
         var text = await File.ReadAllTextAsync(file.FullName);
-        text.Split('\n')[0].Trim().ShouldBe("Name,Count");
+        text.ShouldContain("Name,Count");
+        text.ShouldContain("Namespaces");
     }
 
     [Fact]

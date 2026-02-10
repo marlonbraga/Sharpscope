@@ -8,7 +8,7 @@ namespace Sharpscope.Domain.Contracts;
 public interface IMetricsEngine
 {
     /// <summary>
-    /// Computes the full set of metrics (the 44 requested ones) from <see cref="CodeModel"/>.
+    /// Computes the full set of metrics (the 44 requested ones) from <see cref="CodeGraph"/>.
     /// </summary>
-    MetricsResult Compute(CodeModel model);
+    MetricsSnapshot Compute(CodeGraph graph);
 }

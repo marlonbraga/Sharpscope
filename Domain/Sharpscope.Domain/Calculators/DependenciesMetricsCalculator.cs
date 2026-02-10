@@ -12,10 +12,11 @@ public sealed class DependenciesMetricsCalculator
 {
     #region Public API
 
-    public DependencyMetrics Compute(CodeModel model)
+    public DependencyMetrics Compute(CodeGraph graph)
     {
-        if (model is null) throw new ArgumentNullException(nameof(model));
+        if (graph is null) throw new ArgumentNullException(nameof(graph));
 
+        var model = CodeGraphModelAdapter.ToCodeModel(graph);
         var allTypes = CollectTypes(model).Select(t => t.FullName).ToHashSet(StringComparer.Ordinal);
 
         // DEP: distinct (source -> target) from TypeNode.DependsOnTypes (includes externals)
@@ -27,6 +28,36 @@ public sealed class DependenciesMetricsCalculator
         var totalIDep = internalEdges.Count;
 
         // Cycles
+        var typeCycles = FindCycles(model.DependencyGraph.TypeEdges, allTypes)
+            .Select(nodes => new DependencyCycle(nodes, "Type"));
+        var nsNames = CollectNamespaces(model).Select(n => n.Name).ToHashSet(StringComparer.Ordinal);
+        var nsCycles = FindCycles(model.DependencyGraph.NamespaceEdges, nsNames)
+            .Select(nodes => new DependencyCycle(nodes, "Namespace"));
+
+        var cycles = typeCycles.Concat(nsCycles).ToList();
+
+        return new DependencyMetrics(
+            TotalDependencies: totalDep,
+            InternalDependencies: totalIDep,
+            Cycles: cycles
+        );
+    }
+
+    /// <summary>
+    /// Legacy overload for direct <see cref="CodeModel"/> inputs (used in regression tests).
+    /// </summary>
+    public DependencyMetrics Compute(CodeModel model)
+    {
+        if (model is null) throw new ArgumentNullException(nameof(model));
+
+        var allTypes = CollectTypes(model).Select(t => t.FullName).ToHashSet(StringComparer.Ordinal);
+
+        var depEdges = BuildDistinctEdgesFromNodes(model, allTypes);
+        var totalDep = depEdges.Count;
+
+        var internalEdges = BuildDistinctInternalEdges(model.DependencyGraph.TypeEdges);
+        var totalIDep = internalEdges.Count;
+
         var typeCycles = FindCycles(model.DependencyGraph.TypeEdges, allTypes)
             .Select(nodes => new DependencyCycle(nodes, "Type"));
         var nsNames = CollectNamespaces(model).Select(n => n.Name).ToHashSet(StringComparer.Ordinal);

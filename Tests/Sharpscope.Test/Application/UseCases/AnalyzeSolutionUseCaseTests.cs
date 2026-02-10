@@ -1,7 +1,6 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Runtime.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using NSubstitute;
@@ -17,12 +16,11 @@ public sealed class AnalyzeSolutionUseCaseTests
 {
     #region Happy-path: local path
 
-    [Fact(DisplayName = "ExecuteAsync (local path) runs full pipeline and writes via selected writer")]
-    public async Task ExecuteAsync_Local_WritesReport()
+    [Fact(DisplayName = "ExecuteAsync (local path) runs full pipeline and returns snapshot")]
+    public async Task ExecuteAsync_Local_ReturnsSnapshot()
     {
         // Arrange
         var work = CreateTempDir();
-        var output = Path.Combine(work.FullName, "out.json");
 
         var source = Substitute.For<ISourceProvider>();
         source.MaterializeFromLocalAsync(Arg.Any<DirectoryInfo>(), Arg.Any<CancellationToken>())
@@ -35,48 +33,40 @@ public sealed class AnalyzeSolutionUseCaseTests
         var adapter = Substitute.For<ILanguageAdapter>();
         adapter.LanguageId.Returns("csharp");
         adapter.CanHandle("csharp").Returns(true);
-        adapter.BuildModelAsync(Arg.Any<DirectoryInfo>(), Arg.Any<CancellationToken>())
-               .Returns(Task.FromResult(CreateMinimalModel()));
+        var graph = CreateMinimalGraph();
+        adapter.BuildGraphAsync(Arg.Any<DirectoryInfo>(), Arg.Any<CancellationToken>())
+               .Returns(Task.FromResult(graph));
 
         var engine = Substitute.For<IMetricsEngine>();
-        var metrics = (MetricsResult)FormatterServices.GetUninitializedObject(typeof(MetricsResult));
-        engine.Compute(Arg.Any<CodeModel>()).Returns(metrics);
-
-        var jsonWriter = Substitute.For<IReportWriter>();
-        jsonWriter.Format.Returns("json");
-        jsonWriter.WriteAsync(metrics, Arg.Any<FileInfo>(), Arg.Any<CancellationToken>())
-                  .Returns(Task.CompletedTask);
+        var metrics = MetricsSnapshot.Empty;
+        engine.Compute(Arg.Any<CodeGraph>()).Returns(metrics);
 
         var sut = new AnalyzeSolutionUseCase(
             source,
             detector,
             new[] { adapter },
-            engine,
-            new[] { jsonWriter }
+            engine
         );
 
         var req = new AnalyzeRequest(
             Path: work.FullName,
             RepoUrl: null,
             Format: "json",
-            OutputPath: output
+            OutputPath: null
         );
 
         // Act
-        var file = await sut.ExecuteAsync(req, CancellationToken.None);
+        var snapshot = await sut.ExecuteAsync(req, CancellationToken.None);
 
         // Assert
-        file.FullName.ShouldBe(output);
+        snapshot.Graph.ShouldBe(graph);
+        snapshot.Metrics.ShouldBe(metrics);
+        snapshot.Metadata.RepoUrlOrPath.ShouldBe(work.FullName);
 
         await source.Received(1).MaterializeFromLocalAsync(Arg.Any<DirectoryInfo>(), Arg.Any<CancellationToken>());
         await detector.Received(1).DetectLanguageAsync(work, Arg.Any<CancellationToken>());
-        await adapter.Received(1).BuildModelAsync(work, Arg.Any<CancellationToken>());
-        engine.Received(1).Compute(Arg.Any<CodeModel>());
-
-        await jsonWriter.Received(1).WriteAsync(
-            metrics,
-            Arg.Is<FileInfo>(f => f.FullName == output),
-            Arg.Any<CancellationToken>());
+        await adapter.Received(1).BuildGraphAsync(work, Arg.Any<CancellationToken>());
+        engine.Received(1).Compute(Arg.Any<CodeGraph>());
     }
 
     #endregion
@@ -84,7 +74,7 @@ public sealed class AnalyzeSolutionUseCaseTests
     #region Happy-path: repo URL
 
     [Fact(DisplayName = "ExecuteAsync (repo url) materializes via git")]
-    public async Task ExecuteAsync_Repo_WritesReport()
+    public async Task ExecuteAsync_Repo_Works()
     {
         var work = CreateTempDir();
         var source = Substitute.For<ISourceProvider>();
@@ -94,25 +84,23 @@ public sealed class AnalyzeSolutionUseCaseTests
         var detector = StubDetector("csharp");
         var adapter = StubAdapter("csharp");
         var engine = StubEngine();
-        var writer = StubWriter("md");
 
         var sut = new AnalyzeSolutionUseCase(
             source, detector,
             new[] { adapter },
-            engine,
-            new[] { writer });
+            engine);
 
         var req = new AnalyzeRequest(
             Path: null,
             RepoUrl: "https://example/repo.git",
             Format: "md",
-            OutputPath: null // default under workdir
+            OutputPath: null
         );
 
-        var outFile = await sut.ExecuteAsync(req, CancellationToken.None);
+        var snapshot = await sut.ExecuteAsync(req, CancellationToken.None);
 
         await source.Received(1).MaterializeFromGitAsync("https://example/repo.git", Arg.Any<CancellationToken>());
-        outFile.Name.ShouldBe("sharpscope-report.md");
+        snapshot.ShouldNotBeNull();
     }
 
     #endregion
@@ -153,27 +141,9 @@ public sealed class AnalyzeSolutionUseCaseTests
         var sut = new AnalyzeSolutionUseCase(
             source, detector,
             Array.Empty<ILanguageAdapter>(),
-            Substitute.For<IMetricsEngine>(),
-            Array.Empty<IReportWriter>());
+            Substitute.For<IMetricsEngine>());
 
         var req = new AnalyzeRequest(work.FullName, null, "json", null);
-
-        await Should.ThrowAsync<NotSupportedException>(() => sut.ExecuteAsync(req, CancellationToken.None));
-    }
-
-    [Fact(DisplayName = "Throws when unknown report format")]
-    public async Task ExecuteAsync_UnknownFormat_Throws()
-    {
-        var work = CreateTempDir();
-
-        var sut = new AnalyzeSolutionUseCase(
-            StubSource(work),
-            StubDetector("csharp"),
-            new[] { StubAdapter("csharp") },
-            StubEngine(),
-            Array.Empty<IReportWriter>());
-
-        var req = new AnalyzeRequest(work.FullName, null, "pdf", null);
 
         await Should.ThrowAsync<NotSupportedException>(() => sut.ExecuteAsync(req, CancellationToken.None));
     }
@@ -189,21 +159,11 @@ public sealed class AnalyzeSolutionUseCaseTests
         return dir;
     }
 
-    private static CodeModel CreateMinimalModel()
+    private static CodeGraph CreateMinimalGraph()
     {
-        var module = new ModuleNode("M", new List<NamespaceNode> { new NamespaceNode("N", new List<TypeNode>()) });
-        var codebase = new Codebase(new List<ModuleNode> { module });
-        var graph = new DependencyGraph(
-            new Dictionary<string, IReadOnlyCollection<string>>(),
-            new Dictionary<string, IReadOnlyCollection<string>>());
-        return new CodeModel(codebase, graph);
-    }
-
-    private static ISourceProvider StubSource(DirectoryInfo work)
-    {
-        var s = Substitute.For<ISourceProvider>();
-        s.MaterializeFromLocalAsync(Arg.Any<DirectoryInfo>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(work));
-        return s;
+        var nodes = new Dictionary<string, GraphNode>();
+        var edges = new List<GraphEdge>();
+        return new CodeGraph(nodes, edges);
     }
 
     private static ILanguageDetector StubDetector(string? lang)
@@ -219,26 +179,16 @@ public sealed class AnalyzeSolutionUseCaseTests
         var a = Substitute.For<ILanguageAdapter>();
         a.LanguageId.Returns(langId);
         a.CanHandle(langId).Returns(true);
-        a.BuildModelAsync(Arg.Any<DirectoryInfo>(), Arg.Any<CancellationToken>())
-         .Returns(Task.FromResult(CreateMinimalModel()));
+        a.BuildGraphAsync(Arg.Any<DirectoryInfo>(), Arg.Any<CancellationToken>())
+         .Returns(Task.FromResult(CreateMinimalGraph()));
         return a;
     }
 
     private static IMetricsEngine StubEngine()
     {
         var e = Substitute.For<IMetricsEngine>();
-        var mr = (MetricsResult)FormatterServices.GetUninitializedObject(typeof(MetricsResult));
-        e.Compute(Arg.Any<CodeModel>()).Returns(mr);
+        e.Compute(Arg.Any<CodeGraph>()).Returns(MetricsSnapshot.Empty);
         return e;
-    }
-
-    private static IReportWriter StubWriter(string format)
-    {
-        var w = Substitute.For<IReportWriter>();
-        w.Format.Returns(format);
-        w.WriteAsync(Arg.Any<MetricsResult>(), Arg.Any<FileInfo>(), Arg.Any<CancellationToken>())
-         .Returns(Task.CompletedTask);
-        return w;
     }
 
     private AnalyzeSolutionUseCase NewSut()
@@ -247,8 +197,7 @@ public sealed class AnalyzeSolutionUseCaseTests
             Substitute.For<ISourceProvider>(),
             Substitute.For<ILanguageDetector>(),
             Array.Empty<ILanguageAdapter>(),
-            Substitute.For<IMetricsEngine>(),
-            Array.Empty<IReportWriter>());
+            Substitute.For<IMetricsEngine>());
     }
 
     #endregion

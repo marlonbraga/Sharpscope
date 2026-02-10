@@ -12,6 +12,35 @@ public sealed class CouplingMetricsCalculator
     /// <summary>
     /// Computes coupling metrics for each namespace in the model.
     /// </summary>
+    public IReadOnlyList<NamespaceCouplingMetrics> ComputeNamespaceCoupling(CodeGraph graph)
+    {
+        var model = CodeGraphModelAdapter.ToCodeModel(graph);
+        var namespaces = CollectNamespaces(model);
+        var nsNames = new HashSet<string>(namespaces.Select(n => n.Name), StringComparer.Ordinal);
+
+        var nsOut = BuildNamespaceOutEdges(model, nsNames);
+        var nsIn = BuildNamespaceInEdges(nsOut, nsNames);
+
+        return ComputeNamespaceMetrics(namespaces, nsIn, nsOut);
+    }
+
+    /// <summary>
+    /// Computes coupling metrics for each type (DEP, I-DEP, FAN-IN, FAN-OUT).
+    /// </summary>
+    public IReadOnlyList<TypeCouplingMetrics> ComputeTypeCoupling(CodeGraph graph)
+    {
+        var model = CodeGraphModelAdapter.ToCodeModel(graph);
+        var (allTypes, typeNames) = CollectTypes(model);
+
+        var typeOutInternal = BuildTypeOutInternal(model, typeNames);
+        var typeInInternal = BuildTypeInInternal(typeOutInternal, typeNames);
+
+        return ComputeTypeMetrics(allTypes, typeOutInternal, typeInInternal);
+    }
+
+    /// <summary>
+    /// Legacy overload for direct <see cref="CodeModel"/> inputs (used in regression tests).
+    /// </summary>
     public IReadOnlyList<NamespaceCouplingMetrics> ComputeNamespaceCoupling(CodeModel model)
     {
         var namespaces = CollectNamespaces(model);
@@ -24,7 +53,7 @@ public sealed class CouplingMetricsCalculator
     }
 
     /// <summary>
-    /// Computes coupling metrics for each type (DEP, I-DEP, FAN-IN, FAN-OUT).
+    /// Legacy overload for direct <see cref="CodeModel"/> inputs (used in regression tests).
     /// </summary>
     public IReadOnlyList<TypeCouplingMetrics> ComputeTypeCoupling(CodeModel model)
     {

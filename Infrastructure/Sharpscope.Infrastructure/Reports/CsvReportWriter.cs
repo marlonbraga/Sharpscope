@@ -1,8 +1,5 @@
 using System;
-using System.Collections;
 using System.IO;
-using System.Linq;
-using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,27 +18,21 @@ public sealed class CsvReportWriter : IReportWriter
 
     #region Public API
 
-    public async Task WriteAsync(MetricsResult result, FileInfo outputFile, CancellationToken ct)
+    public async Task WriteAsync(AnalysisSnapshot snapshot, FileInfo outputFile, CancellationToken ct)
     {
-        if (result is null) throw new ArgumentNullException(nameof(result));
+        if (snapshot is null) throw new ArgumentNullException(nameof(snapshot));
         if (outputFile is null) throw new ArgumentNullException(nameof(outputFile));
 
         outputFile.Directory?.Create();
 
         var sb = new StringBuilder();
         sb.AppendLine("Name,Count");
-
-        foreach (var p in result.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public))
-        {
-            var val = p.GetValue(result);
-            if (val is null) continue;
-            if (val is IEnumerable en && val is not string)
-            {
-                var count = 0;
-                foreach (var _ in en) count++;
-                sb.AppendLine($"{p.Name},{count}");
-            }
-        }
+        sb.AppendLine($"Namespaces,{snapshot.Metrics.Namespaces.Count}");
+        sb.AppendLine($"Types,{snapshot.Metrics.Types.Count}");
+        sb.AppendLine($"Methods,{snapshot.Metrics.Methods.Count}");
+        sb.AppendLine($"Projects,{snapshot.Metrics.Projects.Count}");
+        sb.AppendLine($"NamespaceCoupling,{snapshot.Metrics.NamespaceCoupling.Count}");
+        sb.AppendLine($"TypeCoupling,{snapshot.Metrics.TypeCoupling.Count}");
 
         await File.WriteAllTextAsync(outputFile.FullName, sb.ToString(), ct).ConfigureAwait(false);
     }

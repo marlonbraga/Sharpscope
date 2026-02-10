@@ -1,6 +1,7 @@
 using Sharpscope.Cli.Infrastructure;
 using Sharpscope.Cli.Services;
 using Sharpscope.Application.UseCases;
+using Sharpscope.Domain.Contracts;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -9,6 +10,7 @@ namespace Sharpscope.Cli.Commands;
 public sealed class AnalyzeCommand : AsyncCommand<AnalyzeSettings>
 {
     private readonly AnalyzeSolutionUseCase _useCase;
+    private readonly IEnumerable<IReportWriter> _reportWriters;
     private readonly IConsoleInteractor _console;
     private readonly IInputNormalizer _normalizer;
     private readonly ILoadingAnimator _loading;
@@ -18,11 +20,13 @@ public sealed class AnalyzeCommand : AsyncCommand<AnalyzeSettings>
 
     public AnalyzeCommand(
         AnalyzeSolutionUseCase useCase,
+        IEnumerable<IReportWriter> reportWriters,
         IConsoleInteractor console,
         IInputNormalizer normalizer,
         ILoadingAnimator loading)
     {
         _useCase = useCase;
+        _reportWriters = reportWriters;
         _console = console;
         _normalizer = normalizer;
         _loading = loading;
@@ -63,7 +67,10 @@ public sealed class AnalyzeCommand : AsyncCommand<AnalyzeSettings>
                 OutputPath: s.OutputPath // may be null
             );
 
-            outputFile = await _useCase.ExecuteAsync(req, CancellationToken.None);
+            var snapshot = await _useCase.ExecuteAsync(req, CancellationToken.None);
+            var writer = ResolveWriter(format);
+            outputFile = ResolveOutputFile(s.OutputPath, writer.Format);
+            await writer.WriteAsync(snapshot, outputFile, CancellationToken.None);
         }
         finally
         {
@@ -131,6 +138,26 @@ public sealed class AnalyzeCommand : AsyncCommand<AnalyzeSettings>
 
     private static bool NormalizePrint(string? raw) =>
         !string.IsNullOrWhiteSpace(raw) && raw.Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
+
+    private IReportWriter ResolveWriter(string format)
+    {
+        var writer = _reportWriters.FirstOrDefault(w => string.Equals(w.Format, format, StringComparison.OrdinalIgnoreCase));
+        if (writer is null)
+        {
+            var supported = string.Join(", ", _reportWriters.Select(w => w.Format));
+            throw new NotSupportedException($"Unknown report format '{format}'. Supported: {supported}");
+        }
+        return writer;
+    }
+
+    private static FileInfo ResolveOutputFile(string? outputPath, string format)
+    {
+        if (!string.IsNullOrWhiteSpace(outputPath))
+            return new FileInfo(outputPath);
+
+        var name = $"sharpscope-report.{format.ToLowerInvariant()}";
+        return new FileInfo(Path.Combine(Environment.CurrentDirectory, name));
+    }
 
     private async Task HandleOutputAsync(FileInfo file, bool keepFile, bool print)
     {

@@ -6,7 +6,7 @@ using Sharpscope.Domain.Models;
 namespace Sharpscope.Domain.Calculators;
 
 /// <summary>
-/// Orchestrates all calculators to produce the final <see cref="MetricsResult"/>.
+/// Orchestrates all calculators to produce the final <see cref="MetricsSnapshot"/>.
 /// </summary>
 public sealed class MetricsEngine : IMetricsEngine
 {
@@ -52,32 +52,24 @@ public sealed class MetricsEngine : IMetricsEngine
 
     #region IMetricsEngine
 
-    public MetricsResult Compute(CodeModel model)
+    public MetricsSnapshot Compute(CodeGraph graph)
     {
-        if (model is null) throw new ArgumentNullException(nameof(model));
+        if (graph is null) throw new ArgumentNullException(nameof(graph));
 
         // 1) per-entity metrics
-        var methodMetrics = _methods.ComputeAll(model);
-        var typeMetrics = _types.ComputeAll(model);
-        var nsMetrics = _namespaces.ComputeAll(model);
+        var methodMetrics = _methods.ComputeAll(graph);
+        var typeMetrics = _types.ComputeAll(graph);
+        var nsMetrics = _namespaces.ComputeAll(graph);
 
         // 2) coupling & dependencies
-        var nsCoupling = _coupling.ComputeNamespaceCoupling(model);
-        var typeCoupling = _coupling.ComputeTypeCoupling(model);
-        var dependencies = _dependencies.Compute(model);
+        var nsCoupling = _coupling.ComputeNamespaceCoupling(graph);
+        var typeCoupling = _coupling.ComputeTypeCoupling(graph);
+        var dependencies = _dependencies.Compute(graph);
 
         // 3) summary
-        var summary = _summary.Compute(model, typeMetrics, methodMetrics);
+        var summary = _summary.Compute(graph, typeMetrics, methodMetrics);
 
-        return new MetricsResult(
-            Summary: summary,
-            Namespaces: nsMetrics,
-            Types: typeMetrics,
-            Methods: methodMetrics,
-            NamespaceCoupling: nsCoupling,
-            TypeCoupling: typeCoupling,
-            Dependencies: dependencies
-        );
+        return MetricsSnapshotBuilder.Build(graph, summary, nsMetrics, typeMetrics, methodMetrics, nsCoupling, typeCoupling, dependencies);
     }
 
     #endregion

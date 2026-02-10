@@ -1,5 +1,6 @@
 using Sharpscope.Domain.Calculators;
 using Sharpscope.Domain.Models;
+using Sharpscope.Test.Helpers;
 
 namespace Sharpscope.Test.DomainTests;
 
@@ -9,11 +10,11 @@ public sealed class CouplingMetricsCalculatorTests
     public void ComputeTypeCoupling_SimpleModel_Works()
     {
         // Arrange
-        var model = BuildSimpleModel();
+        var graph = BuildSimpleGraph();
         var calc = new CouplingMetricsCalculator();
 
         // Act
-        var typeCoupling = calc.ComputeTypeCoupling(model).ToDictionary(x => x.TypeFullName);
+        var typeCoupling = calc.ComputeTypeCoupling(graph).ToDictionary(x => x.TypeFullName);
 
         // Assert
         Assert.True(typeCoupling.ContainsKey("N1.A"));
@@ -43,11 +44,11 @@ public sealed class CouplingMetricsCalculatorTests
     public void ComputeNamespaceCoupling_SimpleModel_Works()
     {
         // Arrange
-        var model = BuildSimpleModel();
+        var graph = BuildSimpleGraph();
         var calc = new CouplingMetricsCalculator();
 
         // Act
-        var nsCoupling = calc.ComputeNamespaceCoupling(model).ToDictionary(x => x.Namespace);
+        var nsCoupling = calc.ComputeNamespaceCoupling(graph).ToDictionary(x => x.Namespace);
 
         // Assert
         Assert.True(nsCoupling.ContainsKey("N1"));
@@ -71,7 +72,7 @@ public sealed class CouplingMetricsCalculatorTests
     /// <summary>
     /// Small factory to build the shared in-memory model used by both tests.
     /// </summary>
-    private static CodeModel BuildSimpleModel()
+    private static CodeGraph BuildSimpleGraph()
     {
         // Types
         var typeA = new TypeNode(
@@ -124,6 +125,7 @@ public sealed class CouplingMetricsCalculatorTests
         };
 
         var graph = new DependencyGraph(typeEdges, nsEdges);
-        return new CodeModel(codebase, graph);
+        var model = new CodeModel(codebase, graph);
+        return TestGraphFactory.FromCodeModel(model);
     }
 }

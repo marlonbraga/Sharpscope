@@ -17,6 +17,19 @@ public sealed class NamespacesMetricsCalculator
     /// <summary>
     /// Computes <see cref="NamespaceMetrics"/> for every namespace in the <paramref name="model"/>.
     /// </summary>
+    public IReadOnlyList<NamespaceMetrics> ComputeAll(CodeGraph graph)
+    {
+        if (graph is null) throw new ArgumentNullException(nameof(graph));
+
+        var model = CodeGraphModelAdapter.ToCodeModel(graph);
+        return CollectNamespaces(model)
+            .Select(ComputeFor)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Legacy overload for direct <see cref="CodeModel"/> inputs (used in regression tests).
+    /// </summary>
     public IReadOnlyList<NamespaceMetrics> ComputeAll(CodeModel model)
     {
         if (model is null) throw new ArgumentNullException(nameof(model));

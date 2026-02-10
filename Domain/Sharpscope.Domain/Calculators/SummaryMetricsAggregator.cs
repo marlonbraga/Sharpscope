@@ -17,14 +17,15 @@ public sealed class SummaryMetricsAggregator
     /// per-type and per-method metrics.
     /// </summary>
     public SummaryMetrics Compute(
-        CodeModel model,
+        CodeGraph graph,
         IReadOnlyList<TypeMetrics> types,
         IReadOnlyList<MethodMetrics> methods)
     {
-        if (model is null) throw new ArgumentNullException(nameof(model));
+        if (graph is null) throw new ArgumentNullException(nameof(graph));
         if (types is null) throw new ArgumentNullException(nameof(types));
         if (methods is null) throw new ArgumentNullException(nameof(methods));
 
+        var model = CodeGraphModelAdapter.ToCodeModel(graph);
         var totalNamespaces = CountNamespaces(model);
         var totalTypes = types.Count;
         var meanTypesPerNs = SafeDivision(totalTypes, totalNamespaces);
@@ -45,6 +46,63 @@ public sealed class SummaryMetricsAggregator
         var stdMethods = methodsPerType.StandardDeviation();
 
         // Complexity (WMC per type distribution)
+        var wmcPerType = types.Select(t => t.Wmc).ToList();
+        var totalComplex = wmcPerType.Sum();
+        var avgComplex = wmcPerType.Mean();
+        var medComplex = wmcPerType.Median();
+        var stdComplex = wmcPerType.StandardDeviation();
+
+        return new SummaryMetrics(
+            TotalNamespaces: totalNamespaces,
+            TotalTypes: totalTypes,
+            MeanTypesPerNamespace: meanTypesPerNs,
+
+            TotalSloc: totalSloc,
+            AvgSlocPerType: avgSloc,
+            MedianSlocPerType: medSloc,
+            StdDevSlocPerType: stdSloc,
+
+            TotalMethods: totalMethods,
+            AvgMethodsPerType: avgMethods,
+            MedianMethodsPerType: medMethods,
+            StdDevMethodsPerType: stdMethods,
+
+            TotalComplexity: totalComplex,
+            AvgComplexityPerType: avgComplex,
+            MedianComplexityPerType: medComplex,
+            StdDevComplexityPerType: stdComplex
+        );
+    }
+
+    /// <summary>
+    /// Legacy overload for direct <see cref="CodeModel"/> inputs (used in regression tests).
+    /// </summary>
+    public SummaryMetrics Compute(
+        CodeModel model,
+        IReadOnlyList<TypeMetrics> types,
+        IReadOnlyList<MethodMetrics> methods)
+    {
+        if (model is null) throw new ArgumentNullException(nameof(model));
+        if (types is null) throw new ArgumentNullException(nameof(types));
+        if (methods is null) throw new ArgumentNullException(nameof(methods));
+
+        var totalNamespaces = CountNamespaces(model);
+        var totalTypes = types.Count;
+        var meanTypesPerNs = SafeDivision(totalTypes, totalNamespaces);
+
+        var slocPerType = types.Select(t => t.Sloc).ToList();
+        var totalSloc = slocPerType.Sum();
+        var avgSloc = slocPerType.Mean();
+        var medSloc = slocPerType.Median();
+        var stdSloc = slocPerType.StandardDeviation();
+
+        var methodsPerType = types.Select(t => t.Nom).ToList();
+        var totalMethods = methods.Count;
+        if (totalMethods == 0) totalMethods = methodsPerType.Sum();
+        var avgMethods = methodsPerType.Mean();
+        var medMethods = methodsPerType.Median();
+        var stdMethods = methodsPerType.StandardDeviation();
+
         var wmcPerType = types.Select(t => t.Wmc).ToList();
         var totalComplex = wmcPerType.Sum();
         var avgComplex = wmcPerType.Mean();

@@ -3,6 +3,7 @@ using System.Linq;
 using Shouldly;
 using Sharpscope.Domain.Calculators;
 using Sharpscope.Domain.Models;
+using Sharpscope.Test.Helpers;
 using Xunit;
 
 namespace Sharpscope.Test.DomainTests;
@@ -50,11 +51,12 @@ public sealed class TypesMetricsCalculatorTests
 
         var graph = new DependencyGraph(typeEdges, new Dictionary<string, IReadOnlyCollection<string>>());
         var model = new CodeModel(codebase, graph);
+        var cg = TestGraphFactory.FromCodeModel(model);
 
         var calc = new TypesMetricsCalculator();
 
         // Act
-        var tm = calc.ComputeFor(t1, model);
+        var tm = calc.ComputeFor(t1, cg);
 
         // Assert
         tm.TypeFullName.ShouldBe("N1.T1");
@@ -107,11 +109,12 @@ public sealed class TypesMetricsCalculatorTests
 
         var graph = new DependencyGraph(typeEdges, new Dictionary<string, IReadOnlyCollection<string>>());
         var model = new CodeModel(codebase, graph);
+        var cg = TestGraphFactory.FromCodeModel(model);
 
         var calc = new TypesMetricsCalculator();
 
         // Act
-        var list = calc.ComputeAll(model);
+        var list = calc.ComputeAll(cg);
         var byName = list.ToDictionary(x => x.TypeFullName);
 
         // Assert T1

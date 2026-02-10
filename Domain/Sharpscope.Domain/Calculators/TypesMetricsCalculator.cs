@@ -14,14 +14,15 @@ public sealed class TypesMetricsCalculator
     #region Public API
 
     /// <summary>
-    /// Computes <see cref="TypeMetrics"/> for a single type using the surrounding <see cref="CodeModel"/>
+    /// Computes <see cref="TypeMetrics"/> for a single type using the surrounding <see cref="CodeGraph"/>
     /// to resolve coupling metrics (I-DEP, FAN-IN, FAN-OUT).
     /// </summary>
-    public TypeMetrics ComputeFor(TypeNode type, CodeModel model)
+    public TypeMetrics ComputeFor(TypeNode type, CodeGraph graph)
     {
         if (type is null) throw new ArgumentNullException(nameof(type));
-        if (model is null) throw new ArgumentNullException(nameof(model));
+        if (graph is null) throw new ArgumentNullException(nameof(graph));
 
+        var model = CodeGraphModelAdapter.ToCodeModel(graph);
         var (typeNames, outMap, inMap) = BuildTypeGraphs(model);
 
         var sloc = SumNonNegative(type.Methods.Select(m => m.Sloc));
@@ -53,7 +54,37 @@ public sealed class TypesMetricsCalculator
     }
 
     /// <summary>
-    /// Computes <see cref="TypeMetrics"/> for every type present in <paramref name="model"/>.
+    /// Computes <see cref="TypeMetrics"/> for every type present in <paramref name="graph"/>.
+    /// </summary>
+    public IReadOnlyList<TypeMetrics> ComputeAll(CodeGraph graph)
+    {
+        if (graph is null) throw new ArgumentNullException(nameof(graph));
+
+        var model = CodeGraphModelAdapter.ToCodeModel(graph);
+        var allTypes = CollectTypes(model).ToList();
+        var graphs = BuildTypeGraphs(model);
+        var list = new List<TypeMetrics>(allTypes.Count);
+
+        foreach (var t in allTypes)
+            list.Add(ComputeForWithGraphs(t, graphs));
+        
+        return list;
+    }
+
+    /// <summary>
+    /// Legacy overload for direct <see cref="CodeModel"/> inputs (used in regression tests).
+    /// </summary>
+    public TypeMetrics ComputeFor(TypeNode type, CodeModel model)
+    {
+        if (type is null) throw new ArgumentNullException(nameof(type));
+        if (model is null) throw new ArgumentNullException(nameof(model));
+
+        var (typeNames, outMap, inMap) = BuildTypeGraphs(model);
+        return ComputeForWithGraphs(type, (typeNames, outMap, inMap));
+    }
+
+    /// <summary>
+    /// Legacy overload for direct <see cref="CodeModel"/> inputs (used in regression tests).
     /// </summary>
     public IReadOnlyList<TypeMetrics> ComputeAll(CodeModel model)
     {
@@ -65,7 +96,7 @@ public sealed class TypesMetricsCalculator
 
         foreach (var t in allTypes)
             list.Add(ComputeForWithGraphs(t, graphs));
-        
+
         return list;
     }
 

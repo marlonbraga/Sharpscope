@@ -31,7 +31,20 @@ public sealed class MethodsMetricsCalculator
     }
 
     /// <summary>
-    /// Computes metrics for all methods found in the <see cref="CodeModel"/>.
+    /// Computes metrics for all methods found in the <see cref="CodeGraph"/>.
+    /// </summary>
+    public IReadOnlyList<MethodMetrics> ComputeAll(CodeGraph graph)
+    {
+        if (graph is null) throw new ArgumentNullException(nameof(graph));
+
+        var model = CodeGraphModelAdapter.ToCodeModel(graph);
+        return CollectMethods(model)
+            .Select(Compute)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Legacy overload for direct <see cref="CodeModel"/> inputs (used in regression tests).
     /// </summary>
     public IReadOnlyList<MethodMetrics> ComputeAll(CodeModel model)
     {

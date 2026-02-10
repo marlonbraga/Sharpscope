@@ -20,7 +20,6 @@ public sealed class AnalyzeSolutionUseCase
     private readonly ILanguageDetector _languageDetector;
     private readonly IEnumerable<ILanguageAdapter> _languageAdapters;
     private readonly IMetricsEngine _metricsEngine;
-    private readonly IEnumerable<IReportWriter> _reportWriters;
 
     #endregion
 
@@ -30,14 +29,12 @@ public sealed class AnalyzeSolutionUseCase
         ISourceProvider sourceProvider,
         ILanguageDetector languageDetector,
         IEnumerable<ILanguageAdapter> languageAdapters,
-        IMetricsEngine metricsEngine,
-        IEnumerable<IReportWriter> reportWriters)
+        IMetricsEngine metricsEngine)
     {
         _sourceProvider = sourceProvider ?? throw new ArgumentNullException(nameof(sourceProvider));
         _languageDetector = languageDetector ?? throw new ArgumentNullException(nameof(languageDetector));
         _languageAdapters = languageAdapters ?? throw new ArgumentNullException(nameof(languageAdapters));
         _metricsEngine = metricsEngine ?? throw new ArgumentNullException(nameof(metricsEngine));
-        _reportWriters = reportWriters ?? throw new ArgumentNullException(nameof(reportWriters));
     }
 
     #endregion
@@ -45,10 +42,9 @@ public sealed class AnalyzeSolutionUseCase
     #region API
 
     /// <summary>
-    /// Materializes the source (local or git), detects language, builds the code model, runs metrics and writes the report.
-    /// Returns the output file info.
+    /// Materializes the source (local or git), detects language, builds the code graph, runs metrics and returns snapshot.
     /// </summary>
-    public async Task<FileInfo> ExecuteAsync(AnalyzeRequest request, CancellationToken ct)
+    public async Task<AnalysisSnapshot> ExecuteAsync(AnalyzeRequest request, CancellationToken ct)
     {
         if (request is null) throw new ArgumentNullException(nameof(request));
         ValidateRequest(request);
@@ -63,20 +59,28 @@ public sealed class AnalyzeSolutionUseCase
         // 3) Resolve adapter
         var adapter = ResolveAdapter(language);
 
-        // 4) Build model (async)
-        var model = await adapter.BuildModelAsync(workdir, ct).ConfigureAwait(false);
+        // 4) Build graph (async)
+        var graph = await adapter.BuildGraphAsync(workdir, ct).ConfigureAwait(false);
 
         // 5) Compute metrics (sync)
-        var metrics = _metricsEngine.Compute(model);
+        var metrics = _metricsEngine.Compute(graph);
 
-        // 6) Resolve writer + output file
-        var writer = ResolveWriter(request.Format);
-        var output = ResolveOutputFile(workdir, request.OutputPath, writer.Format);
+        var metadata = new AnalysisMetadata(
+            RepoUrlOrPath: request.Path ?? request.RepoUrl ?? workdir.FullName,
+            CommitSha: null,
+            Branch: null,
+            TimestampUtc: DateTimeOffset.UtcNow,
+            ToolVersion: ResolveToolVersion(),
+            MetricsSchemaVersion: "1",
+            IntegrationsSchemaVersion: "1"
+        );
 
-        // 7) Write (async)
-        await writer.WriteAsync(metrics, output, ct).ConfigureAwait(false);
-
-        return output;
+        return new AnalysisSnapshot(
+            Metadata: metadata,
+            Graph: graph,
+            Metrics: metrics,
+            Integrations: IntegrationsSnapshot.Empty
+        );
     }
 
     #endregion
@@ -91,8 +95,7 @@ public sealed class AnalyzeSolutionUseCase
         if (hasPath == hasRepo) // both true or both false
             throw new ArgumentException("You must provide either Path or RepoUrl (but not both).");
 
-        if (string.IsNullOrWhiteSpace(r.Format))
-            throw new ArgumentException("Format is required.", nameof(r.Format));
+        // Format/OutputPath are handled by presentation layers (CLI/API)
     }
 
     private async Task<DirectoryInfo> MaterializeAsync(AnalyzeRequest r, CancellationToken ct)
@@ -119,25 +122,8 @@ public sealed class AnalyzeSolutionUseCase
         return adapter;
     }
 
-    private IReportWriter ResolveWriter(string format)
-    {
-        var writer = _reportWriters.FirstOrDefault(w => string.Equals(w.Format, format, StringComparison.OrdinalIgnoreCase));
-        if (writer is null)
-        {
-            var supported = string.Join(", ", _reportWriters.Select(w => w.Format));
-            throw new NotSupportedException($"Unknown report format '{format}'. Supported: {supported}");
-        }
-        return writer;
-    }
-
-    private static FileInfo ResolveOutputFile(DirectoryInfo workdir, string? outputPath, string format)
-    {
-        if (!string.IsNullOrWhiteSpace(outputPath))
-            return new FileInfo(outputPath);
-
-        var name = $"sharpscope-report.{format.ToLowerInvariant()}";
-        return new FileInfo(Path.Combine(workdir.FullName, name));
-    }
+    private static string ResolveToolVersion()
+        => typeof(AnalyzeSolutionUseCase).Assembly.GetName().Version?.ToString() ?? "unknown";
 
     #endregion
 }

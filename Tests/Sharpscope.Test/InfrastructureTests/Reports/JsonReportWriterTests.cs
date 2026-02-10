@@ -1,5 +1,4 @@
-﻿using System.IO;
-using System.Text.Json;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Shouldly;
@@ -12,20 +11,19 @@ namespace Sharpscope.Test.InfrastructureTests.Reports;
 public sealed class JsonReportWriterTests
 {
     [Fact]
-    public async Task WriteAsync_WritesIndentedJson_WithSchema()
+    public async Task WriteAsync_WritesSnapshotJson()
     {
         var writer = new JsonReportWriter();
         var tmp = Path.Combine(Path.GetTempPath(), "sharpscope-tests", "reports");
         Directory.CreateDirectory(tmp);
         var file = new FileInfo(Path.Combine(tmp, "out.json"));
 
-        var metrics = MetricsResultStub.Create();
-        await writer.WriteAsync(metrics, file, CancellationToken.None);
+        var snapshot = AnalysisSnapshotStub.Create();
+        await writer.WriteAsync(snapshot, file, CancellationToken.None);
 
         File.Exists(file.FullName).ShouldBeTrue();
         var text = await File.ReadAllTextAsync(file.FullName);
-        text.ShouldContain("\"schema\"");
-        text.ShouldContain("sharpscope/metrics@1");
+        text.ShouldContain("\"Metadata\"");
         text.TrimStart().StartsWith("{").ShouldBeTrue();
     }
 

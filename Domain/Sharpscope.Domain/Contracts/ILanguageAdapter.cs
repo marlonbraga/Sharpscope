@@ -4,7 +4,7 @@ namespace Sharpscope.Domain.Contracts;
 
 /// <summary>
 /// Language-specific adapter that parses a source tree and produces the
-/// language-agnostic IR <see cref="CodeModel"/>.
+/// language-agnostic IR <see cref="CodeGraph"/>.
 /// </summary>
 public interface ILanguageAdapter
 {
@@ -19,8 +19,8 @@ public interface ILanguageAdapter
     bool CanHandle(string languageId);
 
     /// <summary>
-    /// Builds a <see cref="CodeModel"/> from the given root directory.
+    /// Builds a <see cref="CodeGraph"/> from the given root directory.
     /// The directory should already contain the materialized source code.
     /// </summary>
-    Task<CodeModel> BuildModelAsync(DirectoryInfo root, CancellationToken ct);
+    Task<CodeGraph> BuildGraphAsync(DirectoryInfo root, CancellationToken ct);
 }

@@ -3,6 +3,7 @@ using System.Linq;
 using Shouldly;
 using Sharpscope.Domain.Calculators;
 using Sharpscope.Domain.Models;
+using Sharpscope.Test.Helpers;
 using Xunit;
 
 namespace Sharpscope.Test.DomainTests;
@@ -73,11 +74,12 @@ public sealed class NamespacesMetricsCalculatorTests
         var module = new ModuleNode("M1", new List<NamespaceNode> { n1, n2 });
         var codebase = new Codebase(new List<ModuleNode> { module });
         var model = new CodeModel(codebase, DependencyGraph.Empty);
+        var graph = TestGraphFactory.FromCodeModel(model);
 
         var calc = new NamespacesMetricsCalculator();
 
         // Act
-        var list = calc.ComputeAll(model);
+        var list = calc.ComputeAll(graph);
         var byNs = list.ToDictionary(x => x.Namespace);
 
         // Assert

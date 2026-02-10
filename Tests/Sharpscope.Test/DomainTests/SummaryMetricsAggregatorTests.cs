@@ -2,6 +2,7 @@
 using Shouldly;
 using Sharpscope.Domain.Calculators;
 using Sharpscope.Domain.Models;
+using Sharpscope.Test.Helpers;
 using Xunit;
 
 namespace Sharpscope.Test.DomainTests;
@@ -33,6 +34,7 @@ public sealed class SummaryMetricsAggregatorTests
         var module = new ModuleNode("M1", new List<NamespaceNode> { ns1, ns2 });
         var codebase = new Codebase(new List<ModuleNode> { module });
         var model = new CodeModel(codebase, DependencyGraph.Empty);
+        var graph = TestGraphFactory.FromCodeModel(model);
 
         // Type metrics for 3 types
         var types = new List<TypeMetrics>
@@ -56,7 +58,7 @@ public sealed class SummaryMetricsAggregatorTests
         var agg = new SummaryMetricsAggregator();
 
         // Act
-        var s = agg.Compute(model, types, methods);
+        var s = agg.Compute(graph, types, methods);
 
         // Assert — namespaces/types
         s.TotalNamespaces.ShouldBe(2);
@@ -88,13 +90,14 @@ public sealed class SummaryMetricsAggregatorTests
         var emptyModule = new ModuleNode("M", new List<NamespaceNode>());
         var codebase = new Codebase(new List<ModuleNode> { emptyModule });
         var model = new CodeModel(codebase, DependencyGraph.Empty);
+        var graph = TestGraphFactory.FromCodeModel(model);
 
         var types = new List<TypeMetrics>();
         var methods = new List<MethodMetrics>();
 
         var agg = new SummaryMetricsAggregator();
 
-        var s = agg.Compute(model, types, methods);
+        var s = agg.Compute(graph, types, methods);
 
         s.TotalNamespaces.ShouldBe(0);
         s.TotalTypes.ShouldBe(0);

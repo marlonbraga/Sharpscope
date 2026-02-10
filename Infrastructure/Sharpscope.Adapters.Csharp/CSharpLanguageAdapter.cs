@@ -17,9 +17,9 @@ public sealed class CSharpLanguageAdapter : ILanguageAdapter
     #region Fields & Ctor
 
     private readonly RoslynWorkspaceLoader _loader;
-    private readonly CSharpModelBuilder _builder;
+    private readonly CodeGraphBuilder _builder;
 
-    public CSharpLanguageAdapter(RoslynWorkspaceLoader loader, CSharpModelBuilder builder)
+    public CSharpLanguageAdapter(RoslynWorkspaceLoader loader, CodeGraphBuilder builder)
     {
         _loader = loader ?? throw new ArgumentNullException(nameof(loader));
         _builder = builder ?? throw new ArgumentNullException(nameof(builder));
@@ -34,14 +34,14 @@ public sealed class CSharpLanguageAdapter : ILanguageAdapter
     public bool CanHandle(string languageId) =>
         string.Equals(languageId, "csharp", StringComparison.OrdinalIgnoreCase);
 
-    public async Task<CodeModel> BuildModelAsync(DirectoryInfo workdir, CancellationToken ct)
+    public async Task<CodeGraph> BuildGraphAsync(DirectoryInfo workdir, CancellationToken ct)
     {
         if (workdir is null) throw new ArgumentNullException(nameof(workdir));
         if (!workdir.Exists) throw new DirectoryNotFoundException(workdir.FullName);
 
-        var comp = await _loader.LoadCompilationAsync(workdir.FullName, ct).ConfigureAwait(false);
-        var model = _builder.Build(comp);
-        return model;
+        var workspace = await _loader.LoadWorkspaceAsync(workdir.FullName, ct).ConfigureAwait(false);
+        var graph = _builder.Build(workspace, ct);
+        return graph;
     }
 
     #endregion

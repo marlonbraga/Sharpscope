@@ -1,6 +1,7 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Sharpscope.Application.DTOs;
 using Sharpscope.Application.UseCases;
+using Sharpscope.Domain.Contracts;
 
 namespace Sharpscope.Api.Endpoints;
 
@@ -31,6 +32,7 @@ public static class AnalysesEndpoints
     private static async Task<IResult> RunAsync(
         HttpRequest http,
         AnalyzeSolutionUseCase useCase,
+        IEnumerable<IReportWriter> reportWriters,
         CancellationToken ct)
     {
         if (IsMultipart(http))
@@ -44,7 +46,11 @@ public static class AnalysesEndpoints
         var disposition = DispositionUtils.Resolve(http, bound.Request!.Options);
         var ucReq = RequestMapper.ToUseCase(bound.Request!);
 
-        var file = await useCase.ExecuteAsync(ucReq, ct);
+        var snapshot = await useCase.ExecuteAsync(ucReq, ct);
+        var writer = ResolveWriter(reportWriters, ucReq.Format);
+        var file = CreateTempFile(writer.Format);
+        await writer.WriteAsync(snapshot, file, ct);
+
         return ResultWriter.WriteFile(file, disposition);
     }
 
@@ -53,6 +59,7 @@ public static class AnalysesEndpoints
         IFormFile file,
         [FromForm] UploadMeta meta,
         AnalyzeSolutionUseCase useCase,
+        IEnumerable<IReportWriter> reportWriters,
         HttpRequest http,
         CancellationToken ct)
     {
@@ -81,7 +88,10 @@ public static class AnalysesEndpoints
         var disposition = DispositionUtils.Resolve(http, dto.Options);
 
         var ucReq = RequestMapper.ToUseCase(dto);
-        var outFile = await useCase.ExecuteAsync(ucReq, ct);
+        var snapshot = await useCase.ExecuteAsync(ucReq, ct);
+        var writer = ResolveWriter(reportWriters, format);
+        var outFile = CreateTempFile(writer.Format);
+        await writer.WriteAsync(snapshot, outFile, ct);
 
         return ResultWriter.WriteFile(outFile, disposition);
     }
@@ -100,6 +110,24 @@ public static class AnalysesEndpoints
             return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
 
         return null;
+    }
+
+    private static IReportWriter ResolveWriter(IEnumerable<IReportWriter> writers, string format)
+    {
+        var writer = writers.FirstOrDefault(w => string.Equals(w.Format, format, StringComparison.OrdinalIgnoreCase));
+        if (writer is null)
+        {
+            var supported = string.Join(", ", writers.Select(w => w.Format));
+            throw new NotSupportedException($"Unknown report format '{format}'. Supported: {supported}");
+        }
+        return writer;
+    }
+
+    private static FileInfo CreateTempFile(string format)
+    {
+        var name = $"sharpscope-report-{Guid.NewGuid():N}.{format.ToLowerInvariant()}";
+        var path = Path.Combine(Path.GetTempPath(), name);
+        return new FileInfo(path);
     }
 
     // Form meta (besides the file)

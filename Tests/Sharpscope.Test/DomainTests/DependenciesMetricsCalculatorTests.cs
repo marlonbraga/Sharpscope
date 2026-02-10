@@ -3,6 +3,7 @@ using System.Linq;
 using Shouldly;
 using Sharpscope.Domain.Calculators;
 using Sharpscope.Domain.Models;
+using Sharpscope.Test.Helpers;
 using Xunit;
 
 namespace Sharpscope.Test.DomainTests;
@@ -15,7 +16,7 @@ public sealed class DependenciesMetricsCalculatorTests
         // Types
         var a = new TypeNode("N1.A", TypeKind.Class, false,
             new List<FieldNode>(), new List<MethodNode>(),
-            new List<string> { "N1.B", "System.String" }); // external + internal
+            new List<string> { "N1.B", "N2.C", "System.String" }); // external + internal
 
         var b = new TypeNode("N1.B", TypeKind.Class, false,
             new List<FieldNode>(), new List<MethodNode>(),
@@ -23,7 +24,7 @@ public sealed class DependenciesMetricsCalculatorTests
 
         var c = new TypeNode("N2.C", TypeKind.Class, false,
             new List<FieldNode>(), new List<MethodNode>(),
-            new List<string>());
+            new List<string> { "N1.A" });
 
         var ns1 = new NamespaceNode("N1", new List<TypeNode> { a, b });
         var ns2 = new NamespaceNode("N2", new List<TypeNode> { c });
@@ -34,9 +35,9 @@ public sealed class DependenciesMetricsCalculatorTests
                 // Internal type graph (A<->B), C isolated
                 new Dictionary<string, IReadOnlyCollection<string>>
                 {
-                    ["N1.A"] = new HashSet<string> { "N1.B" },
+                    ["N1.A"] = new HashSet<string> { "N1.B", "N2.C" },
                     ["N1.B"] = new HashSet<string> { "N1.A" },
-                    ["N2.C"] = new HashSet<string>()
+                    ["N2.C"] = new HashSet<string> { "N1.A" }
                 },
                 // Namespace graph cycle N1<->N2
                 new Dictionary<string, IReadOnlyCollection<string>>
@@ -46,18 +47,19 @@ public sealed class DependenciesMetricsCalculatorTests
                 }
             )
         );
+        var graph = TestGraphFactory.FromCodeModel(model);
 
         var calc = new DependenciesMetricsCalculator();
 
         // Act
-        var dm = calc.Compute(model);
+        var dm = calc.Compute(graph);
 
         // Assert
-        // DEP from nodes: A->B, A->System.String, B->A  => 3 distinct
-        dm.TotalDependencies.ShouldBe(3);
+        // DEP from nodes: A->B, A->C, A->System.String, B->A, C->A  => 5 distinct
+        dm.TotalDependencies.ShouldBe(5);
 
-        // I-DEP from internal graph: A->B, B->A  => 2 distinct
-        dm.InternalDependencies.ShouldBe(2);
+        // I-DEP from internal graph: A->B, A->C, B->A, C->A  => 4 distinct
+        dm.InternalDependencies.ShouldBe(4);
 
         // Cycles: one Type cycle [A,B] and one Namespace cycle [N1,N2]
         dm.Cycles.Count.ShouldBe(2);
@@ -67,7 +69,8 @@ public sealed class DependenciesMetricsCalculatorTests
         var typeCycle = dm.Cycles.First(c => c.Scope == "Type").Nodes;
         typeCycle.ShouldContain("N1.A");
         typeCycle.ShouldContain("N1.B");
-        typeCycle.Count.ShouldBe(2);
+        typeCycle.ShouldContain("N2.C");
+        typeCycle.Count.ShouldBe(3);
 
         var nsCycle = dm.Cycles.First(c => c.Scope == "Namespace").Nodes;
         nsCycle.ShouldBe(new[] { "N1", "N2" }, ignoreOrder: true);
@@ -79,10 +82,11 @@ public sealed class DependenciesMetricsCalculatorTests
         var emptyModel = new CodeModel(
             new Codebase(new List<ModuleNode> { new("M", new List<NamespaceNode>()) }),
             DependencyGraph.Empty);
+        var emptyGraph = TestGraphFactory.FromCodeModel(emptyModel);
 
         var calc = new DependenciesMetricsCalculator();
 
-        var dm = calc.Compute(emptyModel);
+        var dm = calc.Compute(emptyGraph);
 
         dm.TotalDependencies.ShouldBe(0);
         dm.InternalDependencies.ShouldBe(0);

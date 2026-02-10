@@ -22,4 +22,12 @@ public sealed record SummaryMetrics(
     double AvgComplexityPerType,
     double MedianComplexityPerType,
     double StdDevComplexityPerType
-);
+)
+{
+    public static SummaryMetrics Empty { get; } = new(
+        0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0
+    );
+}
