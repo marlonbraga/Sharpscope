@@ -20,6 +20,7 @@ public sealed class AnalyzeSolutionUseCase
     private readonly ILanguageDetector _languageDetector;
     private readonly IEnumerable<ILanguageAdapter> _languageAdapters;
     private readonly IMetricsEngine _metricsEngine;
+    private readonly IIntegrationDiscoveryEngine _integrations;
 
     #endregion
 
@@ -29,12 +30,14 @@ public sealed class AnalyzeSolutionUseCase
         ISourceProvider sourceProvider,
         ILanguageDetector languageDetector,
         IEnumerable<ILanguageAdapter> languageAdapters,
-        IMetricsEngine metricsEngine)
+        IMetricsEngine metricsEngine,
+        IIntegrationDiscoveryEngine integrations)
     {
         _sourceProvider = sourceProvider ?? throw new ArgumentNullException(nameof(sourceProvider));
         _languageDetector = languageDetector ?? throw new ArgumentNullException(nameof(languageDetector));
         _languageAdapters = languageAdapters ?? throw new ArgumentNullException(nameof(languageAdapters));
         _metricsEngine = metricsEngine ?? throw new ArgumentNullException(nameof(metricsEngine));
+        _integrations = integrations ?? throw new ArgumentNullException(nameof(integrations));
     }
 
     #endregion
@@ -65,6 +68,9 @@ public sealed class AnalyzeSolutionUseCase
         // 5) Compute metrics (sync)
         var metrics = _metricsEngine.Compute(graph);
 
+        // 6) Discover integrations (async)
+        var integrations = await _integrations.DiscoverAsync(graph, workdir, ct).ConfigureAwait(false);
+
         var metadata = new AnalysisMetadata(
             RepoUrlOrPath: request.Path ?? request.RepoUrl ?? workdir.FullName,
             CommitSha: null,
@@ -79,7 +85,7 @@ public sealed class AnalyzeSolutionUseCase
             Metadata: metadata,
             Graph: graph,
             Metrics: metrics,
-            Integrations: IntegrationsSnapshot.Empty
+            Integrations: integrations
         );
     }
 

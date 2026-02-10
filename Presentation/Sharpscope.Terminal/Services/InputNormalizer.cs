@@ -27,6 +27,18 @@ public sealed class InputNormalizer : IInputNormalizer
 
             if (Directory.Exists(c))
                 return (c, null);
+
+            if (File.Exists(c))
+            {
+                var ext = Path.GetExtension(c);
+                if (ext.Equals(".sln", StringComparison.OrdinalIgnoreCase) ||
+                    ext.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+                {
+                    var dir = Path.GetDirectoryName(c);
+                    if (!string.IsNullOrWhiteSpace(dir))
+                        return (dir, null);
+                }
+            }
         }
 
         // Support GitHub shorthand "owner/repo"

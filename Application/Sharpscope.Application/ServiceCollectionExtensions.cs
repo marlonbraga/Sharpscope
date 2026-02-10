@@ -8,6 +8,7 @@ using Sharpscope.Adapters.CSharp.Roslyn.Modeling;
 using Sharpscope.Adapters.CSharp.Roslyn.Workspace;
 using Sharpscope.Infrastructure;
 using Sharpscope.Infrastructure.Detection;
+using Sharpscope.Infrastructure.Integrations;
 using Sharpscope.Infrastructure.Reports;
 using Sharpscope.Infrastructure.Sources;
 
@@ -38,6 +39,7 @@ public static class ServiceCollectionExtensions
         // -------------------------
         // Registre aqui sua implementação de IMetricsEngine real
         services.AddTransient<IMetricsEngine, MetricsEngine>(); // ajuste o namespace se necessário
+        services.AddTransient<IIntegrationDiscoveryEngine, IntegrationDiscoveryEngine>();
 
         // -------------------------
         // Infrastructure: Sources (Git / Local / Combinado) + helpers

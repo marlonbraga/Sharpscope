@@ -14,7 +14,7 @@ public static class Program
 
         // External DI from your application layer
         // Keep this single line to avoid coupling here:
-        Sharpscope.Application.DI.ServiceCollectionExtensions.AddSharpscope(services, allowMsbuild: false);
+        Sharpscope.Application.DI.ServiceCollectionExtensions.AddSharpscope(services, allowMsbuild: true);
 
         // Local CLI services
         services.AddSingleton<IConsoleInteractor, SpectreConsoleInteractor>();

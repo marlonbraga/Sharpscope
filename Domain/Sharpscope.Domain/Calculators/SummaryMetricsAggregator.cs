@@ -39,7 +39,8 @@ public sealed class SummaryMetricsAggregator
 
         // Methods (per type distribution)
         var methodsPerType = types.Select(t => t.Nom).ToList();
-        var totalMethods = methods.Count; // authoritative count of methods
+        var totalMethods = graph.Nodes.Values.Count(n => n.Kind == GraphNodeKind.Method);
+        if (totalMethods == 0) totalMethods = methods.Count; // fallback if graph is empty
         if (totalMethods == 0) totalMethods = methodsPerType.Sum(); // fallback if empty list passed
         var avgMethods = methodsPerType.Mean();
         var medMethods = methodsPerType.Median();

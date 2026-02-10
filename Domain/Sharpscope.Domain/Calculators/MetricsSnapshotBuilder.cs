@@ -17,57 +17,37 @@ internal static class MetricsSnapshotBuilder
         IReadOnlyList<TypeCouplingMetrics> typeCoupling,
         DependencyMetrics dependencies)
     {
-        var methodIdByName = graph.Nodes.Values
-            .Where(n => n.Kind == GraphNodeKind.Method)
-            .GroupBy(n => n.Name, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.Ordinal);
-
-        var typeIdByName = graph.Nodes.Values
-            .Where(n => n.Kind == GraphNodeKind.Type)
-            .GroupBy(n => n.Name, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.Ordinal);
-
-        var namespaceIdByName = graph.Nodes.Values
-            .Where(n => n.Kind == GraphNodeKind.Namespace)
-            .GroupBy(n => n.Name, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.Ordinal);
-
         var projectNodes = graph.Nodes.Values.Where(n => n.Kind == GraphNodeKind.Project).ToList();
 
-        var methodMetrics = new Dictionary<string, MethodMetrics>(StringComparer.Ordinal);
-        foreach (var metric in methods)
-        {
-            if (methodIdByName.TryGetValue(metric.MethodFullName, out var id))
-                methodMetrics[id] = metric;
-        }
+        var methodMetrics = MapByNodeName(
+            graph,
+            GraphNodeKind.Method,
+            methods,
+            metric => metric.MethodFullName);
 
-        var typeMetrics = new Dictionary<string, TypeMetrics>(StringComparer.Ordinal);
-        foreach (var metric in types)
-        {
-            if (typeIdByName.TryGetValue(metric.TypeFullName, out var id))
-                typeMetrics[id] = metric;
-        }
+        var typeMetrics = MapByNodeName(
+            graph,
+            GraphNodeKind.Type,
+            types,
+            metric => metric.TypeFullName);
 
-        var namespaceMetrics = new Dictionary<string, NamespaceMetrics>(StringComparer.Ordinal);
-        foreach (var metric in namespaces)
-        {
-            if (namespaceIdByName.TryGetValue(metric.Namespace, out var id))
-                namespaceMetrics[id] = metric;
-        }
+        var namespaceMetrics = MapByNodeName(
+            graph,
+            GraphNodeKind.Namespace,
+            namespaces,
+            metric => metric.Namespace);
 
-        var namespaceCouplingMetrics = new Dictionary<string, NamespaceCouplingMetrics>(StringComparer.Ordinal);
-        foreach (var metric in namespaceCoupling)
-        {
-            if (namespaceIdByName.TryGetValue(metric.Namespace, out var id))
-                namespaceCouplingMetrics[id] = metric;
-        }
+        var namespaceCouplingMetrics = MapByNodeName(
+            graph,
+            GraphNodeKind.Namespace,
+            namespaceCoupling,
+            metric => metric.Namespace);
 
-        var typeCouplingMetrics = new Dictionary<string, TypeCouplingMetrics>(StringComparer.Ordinal);
-        foreach (var metric in typeCoupling)
-        {
-            if (typeIdByName.TryGetValue(metric.TypeFullName, out var id))
-                typeCouplingMetrics[id] = metric;
-        }
+        var typeCouplingMetrics = MapByNodeName(
+            graph,
+            GraphNodeKind.Type,
+            typeCoupling,
+            metric => metric.TypeFullName);
 
         var projectMetrics = BuildProjectMetrics(graph, projectNodes);
 
@@ -118,5 +98,38 @@ internal static class MetricsSnapshotBuilder
     {
         if (!contains.TryGetValue(nodeId, out var ids)) return Array.Empty<string>();
         return ids.Where(id => graph.Nodes.TryGetValue(id, out var n) && n.Kind == expectedKind).ToList();
+    }
+
+    private static IReadOnlyDictionary<string, TMetric> MapByNodeName<TMetric>(
+        CodeGraph graph,
+        GraphNodeKind kind,
+        IReadOnlyList<TMetric> metrics,
+        Func<TMetric, string> metricName)
+    {
+        var idsByName = graph.Nodes.Values
+            .Where(n => n.Kind == kind)
+            .GroupBy(n => n.Name, StringComparer.Ordinal)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(n => n.Id).OrderBy(id => id, StringComparer.Ordinal).ToList(),
+                StringComparer.Ordinal);
+
+        var metricsByName = metrics
+            .GroupBy(metricName, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
+
+        var result = new Dictionary<string, TMetric>(StringComparer.Ordinal);
+
+        foreach (var (name, ids) in idsByName)
+        {
+            if (!metricsByName.TryGetValue(name, out var list))
+                continue;
+
+            var count = Math.Min(ids.Count, list.Count);
+            for (var i = 0; i < count; i++)
+                result[ids[i]] = list[i];
+        }
+
+        return result;
     }
 }

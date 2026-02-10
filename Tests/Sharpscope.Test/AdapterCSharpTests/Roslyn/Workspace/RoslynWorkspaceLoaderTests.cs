@@ -52,6 +52,23 @@ public sealed class RoslynWorkspaceLoaderTests
         comp.SyntaxTrees.Count().ShouldBe(1);
     }
 
+    [Fact(DisplayName = "LoadWorkspaceAsync opens Sharpscope.sln with real projects")]
+    public async Task Load_Solution_Works()
+    {
+        var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var slnPath = Path.Combine(repoRoot, "Sharpscope.sln");
+
+        File.Exists(slnPath).ShouldBeTrue();
+
+        var loader = new RoslynWorkspaceLoader(allowMsbuild: true);
+        var workspace = await loader.LoadWorkspaceAsync(slnPath, CancellationToken.None);
+
+        workspace.Projects.Count.ShouldBeGreaterThan(1);
+        workspace.Projects.ShouldAllBe(p =>
+            !string.IsNullOrWhiteSpace(p.ProjectPath) &&
+            p.ProjectPath!.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase));
+    }
+
     #region Helpers
 
     private static string CreateTempDir()

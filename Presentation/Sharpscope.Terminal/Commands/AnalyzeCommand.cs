@@ -39,7 +39,7 @@ public sealed class AnalyzeCommand : AsyncCommand<AnalyzeSettings>
             s = await PromptAllAsync();
 
         // Normalize source (treat path/repo with the same rules)
-        var (path, repo) = _normalizer.NormalizeSource(s.Path, s.Repo);
+        var (path, repo) = _normalizer.NormalizeSource(s.Path ?? s.Solution, s.Repo);
         if (path is null && repo is null)
         {
             _console.Error("You must provide a valid local path or a Git repository URL. Exiting.");
@@ -85,6 +85,7 @@ public sealed class AnalyzeCommand : AsyncCommand<AnalyzeSettings>
 
     private static bool IsEmpty(AnalyzeSettings s) =>
         string.IsNullOrWhiteSpace(s.Path) &&
+        string.IsNullOrWhiteSpace(s.Solution) &&
         string.IsNullOrWhiteSpace(s.Repo) &&
         string.IsNullOrWhiteSpace(s.Format) &&
         string.IsNullOrWhiteSpace(s.OutputPath) &&

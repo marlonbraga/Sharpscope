@@ -16,7 +16,10 @@ internal static class CodeGraphModelAdapter
         var containsMap = graph.Edges
             .Where(e => e.Kind == GraphEdgeKind.Contains)
             .GroupBy(e => e.FromId, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.Select(e => e.ToId).ToList(), StringComparer.Ordinal);
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(e => e.ToId).Distinct(StringComparer.Ordinal).ToList(),
+                StringComparer.Ordinal);
 
         var modules = new List<ModuleNode>();
 
@@ -88,7 +91,8 @@ internal static class CodeGraphModelAdapter
 
         var nsByType = nodes.Values
             .Where(n => n.Kind == GraphNodeKind.Type)
-            .ToDictionary(n => n.Name, n => ExtractNamespace(n.Name), StringComparer.Ordinal);
+            .GroupBy(n => n.Name, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => ExtractNamespace(g.Key), StringComparer.Ordinal);
 
         var namespaceEdges = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         foreach (var ns in nsByType.Values.Distinct(StringComparer.Ordinal))

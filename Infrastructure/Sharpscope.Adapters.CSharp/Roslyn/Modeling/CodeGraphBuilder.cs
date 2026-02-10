@@ -73,7 +73,12 @@ public sealed class CodeGraphBuilder
         var orderedNodes = nodes.OrderBy(kv => kv.Key, StringComparer.Ordinal)
             .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
 
-        var orderedEdges = edges
+        var dedupedEdges = edges
+            .GroupBy(e => (e.FromId, e.ToId, e.Kind))
+            .Select(g => g.First())
+            .ToList();
+
+        var orderedEdges = dedupedEdges
             .OrderBy(e => e.FromId, StringComparer.Ordinal)
             .ThenBy(e => e.Kind)
             .ThenBy(e => e.ToId, StringComparer.Ordinal)
@@ -345,8 +350,7 @@ public sealed class CodeGraphBuilder
         {
             ct.ThrowIfCancellationRequested();
 
-            if (msym.IsImplicitlyDeclared) continue;
-            if (msym.MethodKind is not (MethodKind.Ordinary or MethodKind.Constructor)) continue;
+            if (!IsIncludedMethod(msym)) continue;
 
             var methodFullName = GetMethodFullName(msym);
             var signature = GetMethodSignatureStable(msym);
@@ -480,6 +484,8 @@ public sealed class CodeGraphBuilder
         try
         {
             var relative = Path.GetRelativePath(rootPath, projectPath);
+            if (string.Equals(relative, ".", StringComparison.Ordinal))
+                return "workspace";
             return GraphIdFactory.NormalizePath(relative);
         }
         catch
@@ -516,7 +522,7 @@ public sealed class CodeGraphBuilder
 
     private static string GetMethodSignatureStable(IMethodSymbol methodSymbol)
     {
-        var name = methodSymbol.MethodKind == MethodKind.Constructor ? ".ctor" : methodSymbol.Name;
+        var name = ResolveMethodStableName(methodSymbol);
         var arity = methodSymbol.IsGenericMethod ? $"`{methodSymbol.TypeParameters.Length}" : string.Empty;
         var paramTypes = methodSymbol.Parameters.Select(p => NormalizeTypeName(p.Type)).ToArray();
         var returnType = NormalizeTypeName(methodSymbol.ReturnType);
@@ -524,6 +530,43 @@ public sealed class CodeGraphBuilder
         if (!string.IsNullOrWhiteSpace(returnType))
             signature = $"{signature}:{returnType}";
         return signature;
+    }
+
+    private static bool IsIncludedMethod(IMethodSymbol msym)
+    {
+        if (msym.IsImplicitlyDeclared) return false;
+
+        return msym.MethodKind switch
+        {
+            MethodKind.Ordinary => true,
+            MethodKind.Constructor => true,
+            MethodKind.StaticConstructor => true,
+            MethodKind.Destructor => true,
+            MethodKind.PropertyGet => true,
+            MethodKind.PropertySet => true,
+            MethodKind.EventAdd => true,
+            MethodKind.EventRemove => true,
+            MethodKind.UserDefinedOperator => true,
+            MethodKind.Conversion => true,
+            MethodKind.ExplicitInterfaceImplementation => true,
+            _ => false
+        };
+    }
+
+    private static string ResolveMethodStableName(IMethodSymbol methodSymbol)
+    {
+        if (methodSymbol.MethodKind == MethodKind.Constructor) return ".ctor";
+        if (methodSymbol.MethodKind == MethodKind.StaticConstructor) return ".cctor";
+        if (methodSymbol.MethodKind == MethodKind.Destructor) return ".dtor";
+
+        var explicitImpl = methodSymbol.ExplicitInterfaceImplementations.FirstOrDefault();
+        if (explicitImpl is not null)
+        {
+            var iface = NormalizeTypeName(explicitImpl.ContainingType);
+            return $"{iface}.{explicitImpl.Name}";
+        }
+
+        return methodSymbol.Name;
     }
 
     private static DomainTypeKind MapTypeKind(INamedTypeSymbol t) =>

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Build.Locator;
@@ -56,14 +57,7 @@ public sealed class RoslynWorkspaceLoader
         if (_allowMsbuild && (path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) ||
                               path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)))
         {
-            try
-            {
-                return await LoadWithMsbuildWorkspaceAsync(path, ct).ConfigureAwait(false);
-            }
-            catch
-            {
-                // Fall back if MSBuild not available or project cannot be loaded
-            }
+            return await LoadWithMsbuildWorkspaceAsync(path, ct).ConfigureAwait(false);
         }
 
         var dir = Directory.Exists(path) ? new DirectoryInfo(path)
@@ -74,27 +68,13 @@ public sealed class RoslynWorkspaceLoader
             var sln = Directory.EnumerateFiles(dir.FullName, "*.sln", SearchOption.TopDirectoryOnly).FirstOrDefault();
             if (!string.IsNullOrWhiteSpace(sln))
             {
-                try
-                {
-                    return await LoadWithMsbuildWorkspaceAsync(sln, ct).ConfigureAwait(false);
-                }
-                catch
-                {
-                    // Fall back if MSBuild not available or project cannot be loaded
-                }
+                return await LoadWithMsbuildWorkspaceAsync(sln, ct).ConfigureAwait(false);
             }
 
             var projects = Directory.EnumerateFiles(dir.FullName, "*.csproj", SearchOption.AllDirectories).ToList();
             if (projects.Count > 0)
             {
-                try
-                {
-                    return await LoadMultipleProjectsAsync(dir.FullName, projects, ct).ConfigureAwait(false);
-                }
-                catch
-                {
-                    // Fall back
-                }
+                return await LoadMultipleProjectsAsync(dir.FullName, projects, ct).ConfigureAwait(false);
             }
         }
 
@@ -107,6 +87,12 @@ public sealed class RoslynWorkspaceLoader
 
     private static void EnsureMsBuildRegistered()
     {
+        if (MSBuildLocator.IsRegistered)
+        {
+            _msbuildRegistered = true;
+            return;
+        }
+
         if (_msbuildRegistered) return;
         lock (_msbuildInitLock)
         {
@@ -114,7 +100,8 @@ public sealed class RoslynWorkspaceLoader
             try
             {
                 // Tries to locate and register MSBuild from VS/.NET SDK installation
-                MSBuildLocator.RegisterDefaults();
+                if (!MSBuildLocator.IsRegistered)
+                    MSBuildLocator.RegisterDefaults();
             }
             catch
             {
@@ -129,12 +116,15 @@ public sealed class RoslynWorkspaceLoader
         EnsureMsBuildRegistered();
 
         using var workspace = MSBuildWorkspace.Create();
-        workspace.WorkspaceFailed += (_, __) => { /* optionally log diagnostics */ };
+        var diagnostics = new List<WorkspaceDiagnostic>();
+        workspace.WorkspaceFailed += (_, e) => diagnostics.Add(e.Diagnostic);
 
         if (path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase))
         {
             var solution = await workspace.OpenSolutionAsync(path, cancellationToken: ct).ConfigureAwait(false);
-            return await BuildResultFromSolutionAsync(solution, path, ct).ConfigureAwait(false);
+            var result = await BuildResultFromSolutionAsync(solution, path, ct).ConfigureAwait(false);
+            ThrowIfWorkspaceFailed(path, diagnostics.Concat(workspace.Diagnostics).ToList(), result.Projects.Count);
+            return result;
         }
         else
         {
@@ -144,7 +134,9 @@ public sealed class RoslynWorkspaceLoader
 
             var root = Directory.Exists(path) ? path : Path.GetDirectoryName(path)!;
             var item = new ProjectCompilation(project.Name, project.FilePath, comp);
-            return new RoslynWorkspaceResult(root, null, new[] { item });
+            var result = new RoslynWorkspaceResult(root, null, new[] { item });
+            ThrowIfWorkspaceFailed(path, diagnostics.Concat(workspace.Diagnostics).ToList(), result.Projects.Count);
+            return result;
         }
     }
 
@@ -178,7 +170,8 @@ public sealed class RoslynWorkspaceLoader
         EnsureMsBuildRegistered();
 
         using var workspace = MSBuildWorkspace.Create();
-        workspace.WorkspaceFailed += (_, __) => { };
+        var diagnostics = new List<WorkspaceDiagnostic>();
+        workspace.WorkspaceFailed += (_, e) => diagnostics.Add(e.Diagnostic);
 
         var list = new List<ProjectCompilation>();
         foreach (var proj in projectPaths)
@@ -191,7 +184,9 @@ public sealed class RoslynWorkspaceLoader
             list.Add(new ProjectCompilation(project.Name, project.FilePath, comp));
         }
 
-        return new RoslynWorkspaceResult(rootPath, null, list);
+        var result = new RoslynWorkspaceResult(rootPath, null, list);
+        ThrowIfWorkspaceFailed(rootPath, diagnostics.Concat(workspace.Diagnostics).ToList(), result.Projects.Count);
+        return result;
     }
 
     #endregion
@@ -241,6 +236,27 @@ public sealed class RoslynWorkspaceLoader
 
         return CSharpCompilation.Create("Sharpscope.Merged", trees, refs,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    }
+
+    private static void ThrowIfWorkspaceFailed(
+        string path,
+        IReadOnlyList<WorkspaceDiagnostic> diagnostics,
+        int projectCount)
+    {
+        if (projectCount > 0) return;
+
+        var failures = diagnostics.Where(d => d.Kind == WorkspaceDiagnosticKind.Failure).ToList();
+        if (failures.Count == 0) return;
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"MSBuildWorkspace failed to load: {path}");
+        if (projectCount == 0)
+            sb.AppendLine("No C# projects were loaded.");
+
+        foreach (var d in failures)
+            sb.AppendLine($"- {d.Message}");
+
+        throw new InvalidOperationException(sb.ToString().TrimEnd());
     }
 
     private static void AddBaselineReferences(HashSet<MetadataReference> refs)

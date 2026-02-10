@@ -40,12 +40,16 @@ public sealed class AnalyzeSolutionUseCaseTests
         var engine = Substitute.For<IMetricsEngine>();
         var metrics = MetricsSnapshot.Empty;
         engine.Compute(Arg.Any<CodeGraph>()).Returns(metrics);
+        var integrations = Substitute.For<IIntegrationDiscoveryEngine>();
+        integrations.DiscoverAsync(Arg.Any<CodeGraph>(), Arg.Any<DirectoryInfo>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(IntegrationsSnapshot.Empty));
 
         var sut = new AnalyzeSolutionUseCase(
             source,
             detector,
             new[] { adapter },
-            engine
+            engine,
+            integrations
         );
 
         var req = new AnalyzeRequest(
@@ -84,11 +88,13 @@ public sealed class AnalyzeSolutionUseCaseTests
         var detector = StubDetector("csharp");
         var adapter = StubAdapter("csharp");
         var engine = StubEngine();
+        var integrations = StubIntegrations();
 
         var sut = new AnalyzeSolutionUseCase(
             source, detector,
             new[] { adapter },
-            engine);
+            engine,
+            integrations);
 
         var req = new AnalyzeRequest(
             Path: null,
@@ -141,7 +147,8 @@ public sealed class AnalyzeSolutionUseCaseTests
         var sut = new AnalyzeSolutionUseCase(
             source, detector,
             Array.Empty<ILanguageAdapter>(),
-            Substitute.For<IMetricsEngine>());
+            Substitute.For<IMetricsEngine>(),
+            StubIntegrations());
 
         var req = new AnalyzeRequest(work.FullName, null, "json", null);
 
@@ -197,7 +204,16 @@ public sealed class AnalyzeSolutionUseCaseTests
             Substitute.For<ISourceProvider>(),
             Substitute.For<ILanguageDetector>(),
             Array.Empty<ILanguageAdapter>(),
-            Substitute.For<IMetricsEngine>());
+            Substitute.For<IMetricsEngine>(),
+            StubIntegrations());
+    }
+
+    private static IIntegrationDiscoveryEngine StubIntegrations()
+    {
+        var e = Substitute.For<IIntegrationDiscoveryEngine>();
+        e.DiscoverAsync(Arg.Any<CodeGraph>(), Arg.Any<DirectoryInfo>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(IntegrationsSnapshot.Empty));
+        return e;
     }
 
     #endregion
