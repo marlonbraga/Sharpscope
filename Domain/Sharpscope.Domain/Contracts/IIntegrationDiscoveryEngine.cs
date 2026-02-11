@@ -9,5 +9,9 @@ namespace Sharpscope.Domain.Contracts;
 /// </summary>
 public interface IIntegrationDiscoveryEngine
 {
-    Task<IntegrationsSnapshot> DiscoverAsync(CodeGraph graph, DirectoryInfo root, CancellationToken ct);
+    Task<IntegrationsSnapshot> DiscoverAsync(
+        CodeGraph graph,
+        DirectoryInfo root,
+        string? profile,
+        CancellationToken ct);
 }

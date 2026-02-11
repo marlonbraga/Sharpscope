@@ -18,31 +18,51 @@ namespace Sharpscope.Infrastructure.Integrations;
 /// </summary>
 public sealed class IntegrationDiscoveryEngine : IIntegrationDiscoveryEngine
 {
-    public async Task<IntegrationsSnapshot> DiscoverAsync(CodeGraph graph, DirectoryInfo root, CancellationToken ct)
+    public async Task<IntegrationsSnapshot> DiscoverAsync(
+        CodeGraph graph,
+        DirectoryInfo root,
+        string? profile,
+        CancellationToken ct)
     {
         if (graph is null) throw new ArgumentNullException(nameof(graph));
         if (root is null) throw new ArgumentNullException(nameof(root));
         if (!root.Exists) return IntegrationsSnapshot.Empty;
 
+        var discoveryProfile = IntegrationDiscoveryProfiles.Resolve(profile);
         var context = await IntegrationDiscoveryContext.CreateAsync(graph, root, ct).ConfigureAwait(false);
 
-        var detectors = new IIntegrationDetector[]
-        {
-            new HttpClientDetector(),
-            new DatabaseDetector(),
-            new CacheDetector(),
-            new MessageBusDetector(),
-            new StorageDetector()
-        };
+        var detectors = discoveryProfile.Name.Equals("work", StringComparison.OrdinalIgnoreCase)
+            ? new IIntegrationDetector[]
+            {
+                new DatabaseDetector(),
+                new CacheDetector(),
+                new MessageBusDetector(),
+                new HttpClientDetector(),
+                new StorageDetector(),
+                new KeyVaultDetector(),
+                new OpenTelemetryDetector()
+            }
+            : Array.Empty<IIntegrationDetector>();
 
         var candidates = new List<IntegrationCandidate>();
         foreach (var detector in detectors)
             candidates.AddRange(detector.Detect(context));
 
         var merged = MergeCandidates(candidates);
-        var usageByNodeId = context.BuildUsageByNodeId();
+        var filtered = merged
+            .Where(c => discoveryProfile.Allows(c))
+            .OrderBy(c => c.Id, StringComparer.Ordinal)
+            .ToList();
 
-        return new IntegrationsSnapshot(merged, usageByNodeId);
+        var usageByNodeId = FilterUsageByNodeId(context.BuildUsageByNodeId(), filtered);
+        var usageAggregates = IntegrationUsageAggregator.Build(graph, usageByNodeId);
+
+        return new IntegrationsSnapshot(
+            filtered,
+            usageByNodeId,
+            usageAggregates.UsageByTypeId,
+            usageAggregates.UsageByNamespaceId,
+            usageAggregates.UsageByProjectId);
     }
 
     private static IReadOnlyList<IntegrationCandidate> MergeCandidates(IReadOnlyList<IntegrationCandidate> candidates)
@@ -67,19 +87,76 @@ public sealed class IntegrationDiscoveryEngine : IIntegrationDiscoveryEngine
                 .ToList();
 
             var confidence = Math.Min(1.0, group.Max(c => c.Confidence));
+            var endpoint = group.Select(c => c.Endpoint).FirstOrDefault(e => !string.IsNullOrWhiteSpace(e));
+            var endpointSource = group.Select(c => c.EndpointSource).FirstOrDefault(e => !string.IsNullOrWhiteSpace(e));
+            var attributes = MergeAttributes(group);
 
             merged.Add(new IntegrationCandidate(
                 Id: first.Id,
                 Kind: first.Kind,
                 Technology: first.Technology,
                 LogicalName: first.LogicalName,
-                Endpoint: group.Select(c => c.Endpoint).FirstOrDefault(e => !string.IsNullOrWhiteSpace(e)),
+                Endpoint: endpoint,
+                EndpointSource: endpointSource,
                 Confidence: confidence,
-                Evidence: evidence
+                Evidence: evidence,
+                Attributes: attributes
             ));
         }
 
         return merged;
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> FilterUsageByNodeId(
+        IReadOnlyDictionary<string, IReadOnlyList<string>> usageByNodeId,
+        IReadOnlyList<IntegrationCandidate> allowed)
+    {
+        if (usageByNodeId.Count == 0 || allowed.Count == 0)
+            return new Dictionary<string, IReadOnlyList<string>>();
+
+        var allowedIds = new HashSet<string>(allowed.Select(c => c.Id), StringComparer.Ordinal);
+        var filtered = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+
+        foreach (var entry in usageByNodeId)
+        {
+            var list = entry.Value
+                .Where(id => allowedIds.Contains(id))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .ToList();
+
+            if (list.Count > 0)
+                filtered[entry.Key] = list;
+        }
+
+        return filtered;
+    }
+
+    private static IReadOnlyDictionary<string, string>? MergeAttributes(IEnumerable<IntegrationCandidate> candidates)
+    {
+        var dict = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var candidate in candidates)
+        {
+            if (candidate.Attributes is null) continue;
+            foreach (var kv in candidate.Attributes)
+            {
+                if (string.IsNullOrWhiteSpace(kv.Key) || string.IsNullOrWhiteSpace(kv.Value)) continue;
+                if (!dict.TryGetValue(kv.Key, out var existing))
+                {
+                    dict[kv.Key] = kv.Value;
+                    continue;
+                }
+
+                if (string.Equals(existing, kv.Value, StringComparison.Ordinal)) continue;
+
+                var combined = string.Join(",", new[] { existing, kv.Value }
+                    .Where(v => !string.IsNullOrWhiteSpace(v))
+                    .Distinct(StringComparer.OrdinalIgnoreCase));
+                dict[kv.Key] = combined;
+            }
+        }
+
+        return dict.Count == 0 ? null : dict;
     }
 }
 
@@ -93,6 +170,7 @@ internal sealed class IntegrationDiscoveryContext
     public IReadOnlyList<ConfigEntry> ConfigEntries { get; }
     public IReadOnlyList<InvocationInfo> Invocations { get; }
     public IReadOnlyList<TypeUsageInfo> TypeUsages { get; }
+    public IReadOnlyList<InvocationArgumentInfo> InvocationArguments { get; }
 
     private IntegrationDiscoveryContext(
         DirectoryInfo root,
@@ -100,7 +178,8 @@ internal sealed class IntegrationDiscoveryContext
         IReadOnlyList<PackageReferenceInfo> packages,
         IReadOnlyList<ConfigEntry> configEntries,
         IReadOnlyList<InvocationInfo> invocations,
-        IReadOnlyList<TypeUsageInfo> typeUsages)
+        IReadOnlyList<TypeUsageInfo> typeUsages,
+        IReadOnlyList<InvocationArgumentInfo> invocationArguments)
     {
         Root = root;
         Graph = graph;
@@ -108,6 +187,7 @@ internal sealed class IntegrationDiscoveryContext
         ConfigEntries = configEntries;
         Invocations = invocations;
         TypeUsages = typeUsages;
+        InvocationArguments = invocationArguments;
     }
 
     public static async Task<IntegrationDiscoveryContext> CreateAsync(
@@ -119,8 +199,9 @@ internal sealed class IntegrationDiscoveryContext
         var config = await ConfigScanner.ScanAsync(root, ct).ConfigureAwait(false);
         var invocations = GraphSignalScanner.CollectInvocations(graph);
         var typeUsages = GraphSignalScanner.CollectTypeUsages(graph);
+        var invocationArguments = GraphSignalScanner.CollectInvocationArguments(graph);
 
-        return new IntegrationDiscoveryContext(root, graph, packages, config, invocations, typeUsages);
+        return new IntegrationDiscoveryContext(root, graph, packages, config, invocations, typeUsages, invocationArguments);
     }
 
     public void TrackUsage(string nodeId, string candidateId)
@@ -153,6 +234,12 @@ internal sealed record PackageReferenceInfo(string Name, string FilePath, int? L
 internal sealed record ConfigEntry(string KeyPath, string? Value, string FilePath, int? Line);
 internal sealed record InvocationInfo(string NodeId, string MethodFullName);
 internal sealed record TypeUsageInfo(string NodeId, string TypeFullName);
+internal sealed record InvocationArgumentInfo(
+    string NodeId,
+    string Target,
+    int ArgumentIndex,
+    string? Value,
+    bool IsResolved);
 
 internal interface IIntegrationDetector
 {
@@ -387,5 +474,150 @@ internal static class GraphSignalScanner
         }
 
         return list;
+    }
+
+    public static IReadOnlyList<InvocationArgumentInfo> CollectInvocationArguments(CodeGraph graph)
+    {
+        var list = new List<InvocationArgumentInfo>();
+        foreach (var node in graph.Nodes.Values.Where(n => n.Kind == GraphNodeKind.Method))
+        {
+            if (!node.Attributes.TryGetValue(GraphAttributeKeys.MethodInvocationArguments, out var json))
+                continue;
+
+            if (string.IsNullOrWhiteSpace(json)) continue;
+
+            List<InvocationArgumentPayload>? payloads;
+            try
+            {
+                payloads = JsonSerializer.Deserialize<List<InvocationArgumentPayload>>(json);
+            }
+            catch
+            {
+                payloads = null;
+            }
+
+            if (payloads is null) continue;
+
+            foreach (var p in payloads)
+            {
+                if (string.IsNullOrWhiteSpace(p.Target)) continue;
+                list.Add(new InvocationArgumentInfo(
+                    node.Id,
+                    p.Target,
+                    p.ArgumentIndex,
+                    p.Value,
+                    p.IsResolved));
+            }
+        }
+
+        return list;
+    }
+
+    private sealed record InvocationArgumentPayload(
+        string Target,
+        int ArgumentIndex,
+        string? Value,
+        bool IsResolved);
+}
+
+internal sealed record UsageAggregates(
+    IReadOnlyDictionary<string, IReadOnlyList<string>> UsageByTypeId,
+    IReadOnlyDictionary<string, IReadOnlyList<string>> UsageByNamespaceId,
+    IReadOnlyDictionary<string, IReadOnlyList<string>> UsageByProjectId);
+
+internal static class IntegrationUsageAggregator
+{
+    public static UsageAggregates Build(
+        CodeGraph graph,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> usageByNodeId)
+    {
+        var byType = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        var byNamespace = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        var byProject = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+
+        if (usageByNodeId.Count == 0)
+            return new UsageAggregates(new Dictionary<string, IReadOnlyList<string>>(),
+                new Dictionary<string, IReadOnlyList<string>>(),
+                new Dictionary<string, IReadOnlyList<string>>());
+
+        var parentByChild = graph.Edges
+            .Where(e => e.Kind == GraphEdgeKind.Contains)
+            .GroupBy(e => e.ToId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().FromId, StringComparer.Ordinal);
+
+        foreach (var entry in usageByNodeId)
+        {
+            if (!graph.Nodes.TryGetValue(entry.Key, out var node))
+                continue;
+
+            var current = entry.Key;
+            var kind = node.Kind;
+
+            if (kind == GraphNodeKind.Method)
+            {
+                var typeId = GetParent(current, parentByChild);
+                Add(byType, typeId, entry.Value);
+
+                var nsId = GetParent(typeId, parentByChild);
+                Add(byNamespace, nsId, entry.Value);
+
+                var projectId = GetParent(nsId, parentByChild);
+                Add(byProject, projectId, entry.Value);
+            }
+            else if (kind == GraphNodeKind.Type)
+            {
+                Add(byType, current, entry.Value);
+                var nsId = GetParent(current, parentByChild);
+                Add(byNamespace, nsId, entry.Value);
+                var projectId = GetParent(nsId, parentByChild);
+                Add(byProject, projectId, entry.Value);
+            }
+            else if (kind == GraphNodeKind.Namespace)
+            {
+                Add(byNamespace, current, entry.Value);
+                var projectId = GetParent(current, parentByChild);
+                Add(byProject, projectId, entry.Value);
+            }
+            else if (kind == GraphNodeKind.Project)
+            {
+                Add(byProject, current, entry.Value);
+            }
+        }
+
+        return new UsageAggregates(
+            ToReadOnly(byType),
+            ToReadOnly(byNamespace),
+            ToReadOnly(byProject));
+    }
+
+    private static string? GetParent(string? child, IReadOnlyDictionary<string, string> parentByChild)
+    {
+        if (string.IsNullOrWhiteSpace(child)) return null;
+        return parentByChild.TryGetValue(child, out var parent) ? parent : null;
+    }
+
+    private static void Add(
+        IDictionary<string, HashSet<string>> dict,
+        string? nodeId,
+        IReadOnlyList<string> candidates)
+    {
+        if (string.IsNullOrWhiteSpace(nodeId)) return;
+        if (!dict.TryGetValue(nodeId!, out var set))
+        {
+            set = new HashSet<string>(StringComparer.Ordinal);
+            dict[nodeId!] = set;
+        }
+
+        foreach (var candidate in candidates)
+            set.Add(candidate);
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> ToReadOnly(
+        IDictionary<string, HashSet<string>> dict)
+    {
+        return dict.ToDictionary(
+            kv => kv.Key,
+            kv => (IReadOnlyList<string>)kv.Value.OrderBy(v => v, StringComparer.Ordinal).ToList(),
+            StringComparer.Ordinal);
     }
 }

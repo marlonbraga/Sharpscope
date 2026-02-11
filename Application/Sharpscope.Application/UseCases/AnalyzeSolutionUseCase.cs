@@ -68,8 +68,10 @@ public sealed class AnalyzeSolutionUseCase
         // 5) Compute metrics (sync)
         var metrics = _metricsEngine.Compute(graph);
 
+        var integrationProfile = NormalizeIntegrationProfile(request.IntegrationProfile);
+
         // 6) Discover integrations (async)
-        var integrations = await _integrations.DiscoverAsync(graph, workdir, ct).ConfigureAwait(false);
+        var integrations = await _integrations.DiscoverAsync(graph, workdir, integrationProfile, ct).ConfigureAwait(false);
 
         var metadata = new AnalysisMetadata(
             RepoUrlOrPath: request.Path ?? request.RepoUrl ?? workdir.FullName,
@@ -78,7 +80,8 @@ public sealed class AnalyzeSolutionUseCase
             TimestampUtc: DateTimeOffset.UtcNow,
             ToolVersion: ResolveToolVersion(),
             MetricsSchemaVersion: "1",
-            IntegrationsSchemaVersion: "1"
+            IntegrationsSchemaVersion: "3",
+            IntegrationProfile: integrationProfile
         );
 
         return new AnalysisSnapshot(
@@ -131,6 +134,9 @@ public sealed class AnalyzeSolutionUseCase
     private static string ResolveToolVersion()
         => typeof(AnalyzeSolutionUseCase).Assembly.GetName().Version?.ToString() ?? "unknown";
 
+    private static string NormalizeIntegrationProfile(string? profile)
+        => string.IsNullOrWhiteSpace(profile) ? "work" : profile.Trim();
+
     #endregion
 }
 
@@ -141,5 +147,6 @@ public sealed record AnalyzeRequest(
     string? Path,
     string? RepoUrl,
     string Format,
-    string? OutputPath
+    string? OutputPath,
+    string? IntegrationProfile = null
 );

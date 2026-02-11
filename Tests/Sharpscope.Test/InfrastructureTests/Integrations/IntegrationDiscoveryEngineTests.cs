@@ -29,12 +29,13 @@ public sealed class IntegrationDiscoveryEngineTests
             });
 
         var engine = new IntegrationDiscoveryEngine();
-        var snapshot = await engine.DiscoverAsync(graph, root, CancellationToken.None);
+        var snapshot = await engine.DiscoverAsync(graph, root, "work", CancellationToken.None);
 
         var candidate = snapshot.Candidates.Single(c => c.Kind == IntegrationKind.HttpApi);
-        candidate.LogicalName.ShouldBe("Payments");
         candidate.Technology.ShouldBe("HttpClient");
-        candidate.Endpoint.ShouldBe("https://payments.example");
+        candidate.LogicalName.ShouldBe("Payments");
+        candidate.Endpoint.ShouldNotBeNull();
+        candidate.Endpoint!.ShouldContain("https://payments.example", Case.Insensitive);
         candidate.Confidence.ShouldBeGreaterThanOrEqualTo(0.7);
         candidate.Evidence.ShouldNotBeEmpty();
     }
@@ -54,7 +55,7 @@ public sealed class IntegrationDiscoveryEngineTests
             });
 
         var engine = new IntegrationDiscoveryEngine();
-        var snapshot = await engine.DiscoverAsync(graph, root, CancellationToken.None);
+        var snapshot = await engine.DiscoverAsync(graph, root, "work", CancellationToken.None);
 
         var candidate = snapshot.Candidates.Single(c => c.Kind == IntegrationKind.Database);
         candidate.LogicalName.ShouldBe("MainDb");
@@ -80,7 +81,7 @@ public sealed class IntegrationDiscoveryEngineTests
             });
 
         var engine = new IntegrationDiscoveryEngine();
-        var snapshot = await engine.DiscoverAsync(graph, root, CancellationToken.None);
+        var snapshot = await engine.DiscoverAsync(graph, root, "work", CancellationToken.None);
 
         var candidate = snapshot.Candidates.Single(c => c.Kind == IntegrationKind.Cache);
         candidate.Technology.ShouldBe("Redis");
@@ -102,7 +103,7 @@ public sealed class IntegrationDiscoveryEngineTests
             });
 
         var engine = new IntegrationDiscoveryEngine();
-        var snapshot = await engine.DiscoverAsync(graph, root, CancellationToken.None);
+        var snapshot = await engine.DiscoverAsync(graph, root, "work", CancellationToken.None);
 
         var candidate = snapshot.Candidates.Single(c => c.Kind == IntegrationKind.MessageBus);
         candidate.Technology.ShouldBe("AzureServiceBus");

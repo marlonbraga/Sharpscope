@@ -9,6 +9,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Sharpscope.Adapters.CSharp.Roslyn.Analysis;
 using Sharpscope.Adapters.CSharp.Roslyn.Workspace;
 using Sharpscope.Domain.Models;
+using Sharpscope.Infrastructure.Integrations;
 
 namespace Sharpscope.Adapters.CSharp.Roslyn.Modeling;
 
@@ -327,8 +328,13 @@ public sealed class CodeGraphBuilder
                 }
             }
 
-            if (externalCalls.Count > 0 && nodes.TryGetValue(method.MethodId, out var node))
+            if (nodes.TryGetValue(method.MethodId, out var node))
             {
+                var existingCalls = DeserializeStringList(node.Attributes.TryGetValue(GraphAttributeKeys.MethodExternalCalls, out var json)
+                    ? json
+                    : "[]");
+                externalCalls.AddRange(existingCalls);
+
                 var attrs = new Dictionary<string, string>(node.Attributes, StringComparer.Ordinal)
                 {
                     [GraphAttributeKeys.MethodExternalCalls] = JsonSerializer.Serialize(externalCalls.Distinct(StringComparer.Ordinal))
@@ -372,11 +378,42 @@ public sealed class CodeGraphBuilder
             var accessed = FieldAccessWalker.Compute(syntax, smForNode, tsym);
 
             var invocationTargets = new List<IMethodSymbol>();
+            var invocationArguments = new List<InvocationArgumentInfo>();
+            var fallbackExternalCalls = new List<string>();
             foreach (var invocation in syntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
                 var info = smForNode.GetSymbolInfo(invocation, ct).Symbol as IMethodSymbol;
+                if (info is not null)
+                {
+                    invocationTargets.Add(info);
+                    if (ShouldCaptureInvocationArguments(info))
+                        AddInvocationArguments(invocation.ArgumentList.Arguments, info, smForNode, invocationArguments, ct);
+                }
+                else
+                {
+                    var target = invocation.Expression.ToString();
+                    if (ShouldCaptureInvocationArguments(target))
+                        AddInvocationArguments(invocation.ArgumentList.Arguments, target, smForNode, invocationArguments, ct);
+                    if (!string.IsNullOrWhiteSpace(target))
+                        fallbackExternalCalls.Add(target);
+                }
+            }
+
+            foreach (var creation in syntax.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
+            {
+                var info = smForNode.GetSymbolInfo(creation, ct).Symbol as IMethodSymbol;
                 if (info is null) continue;
-                invocationTargets.Add(info);
+                if (ShouldCaptureInvocationArguments(info))
+                    AddInvocationArguments(creation.ArgumentList?.Arguments, info, smForNode, invocationArguments, ct);
+            }
+
+            foreach (var elementAccess in syntax.DescendantNodes().OfType<ElementAccessExpressionSyntax>())
+            {
+                var symbol = smForNode.GetSymbolInfo(elementAccess, ct).Symbol;
+                if (symbol is null) continue;
+                var target = symbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
+                if (!ShouldCaptureInvocationArguments(target)) continue;
+                AddInvocationArguments(elementAccess.ArgumentList.Arguments, target, smForNode, invocationArguments, ct);
             }
 
             var attrs = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -388,10 +425,11 @@ public sealed class CodeGraphBuilder
                 [GraphAttributeKeys.MethodCalls] = calls.ToString(),
                 [GraphAttributeKeys.MethodIsPublic] = (msym.DeclaredAccessibility == Accessibility.Public).ToString(),
                 [GraphAttributeKeys.MethodAccessedFields] = JsonSerializer.Serialize(accessed),
-                [GraphAttributeKeys.MethodExternalCalls] = "[]"
+                [GraphAttributeKeys.MethodExternalCalls] = JsonSerializer.Serialize(fallbackExternalCalls.Distinct(StringComparer.Ordinal)),
+                [GraphAttributeKeys.MethodInvocationArguments] = JsonSerializer.Serialize(invocationArguments)
             };
 
-            list.Add(new MethodBuildInfo(msym, methodId, methodFullName, attrs, invocationTargets));
+            list.Add(new MethodBuildInfo(msym, methodId, methodFullName, attrs, invocationTargets, invocationArguments));
         }
 
         return list;
@@ -592,7 +630,8 @@ public sealed class CodeGraphBuilder
         string MethodId,
         string FullName,
         IReadOnlyDictionary<string, string> Attributes,
-        IReadOnlyList<IMethodSymbol> InvocationTargets)
+        IReadOnlyList<IMethodSymbol> InvocationTargets,
+        IReadOnlyList<InvocationArgumentInfo> InvocationArguments)
     {
         public static MethodBuildInfo WithDefaults(IMethodSymbol symbol, string methodId, string fullName)
         {
@@ -605,12 +644,156 @@ public sealed class CodeGraphBuilder
                 [GraphAttributeKeys.MethodCalls] = "0",
                 [GraphAttributeKeys.MethodIsPublic] = (symbol.DeclaredAccessibility == Accessibility.Public).ToString(),
                 [GraphAttributeKeys.MethodAccessedFields] = "[]",
-                [GraphAttributeKeys.MethodExternalCalls] = "[]"
+                [GraphAttributeKeys.MethodExternalCalls] = "[]",
+                [GraphAttributeKeys.MethodInvocationArguments] = "[]"
             };
-            return new MethodBuildInfo(symbol, methodId, fullName, attrs, Array.Empty<IMethodSymbol>());
+            return new MethodBuildInfo(symbol, methodId, fullName, attrs, Array.Empty<IMethodSymbol>(), Array.Empty<InvocationArgumentInfo>());
         }
     }
 
     private sealed record TypeBuildInfo(INamedTypeSymbol Symbol, string TypeId, string FullName);
+
+    private sealed record InvocationArgumentInfo(
+        string Target,
+        int ArgumentIndex,
+        string? Value,
+        bool IsResolved);
+
+    private static bool ShouldCaptureInvocationArguments(IMethodSymbol symbol)
+        => ShouldCaptureInvocationArguments(GetMethodFullName(symbol));
+
+    private static bool ShouldCaptureInvocationArguments(string methodFullName)
+    {
+        if (string.IsNullOrWhiteSpace(methodFullName)) return false;
+
+        return methodFullName.Contains("CreateSender", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("CreateProcessor", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("CreateReceiver", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("BasicPublish", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("BasicConsume", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("ServiceBusClient", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("EventGridPublisherClient", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("CosmosClient", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("OracleConnection", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("SqlConnection", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("NpgsqlConnection", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("MongoClient", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("BlobServiceClient", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("GetBlobContainerClient", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("ConnectionFactory", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("AddHttpClient", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("GrpcChannel.ForAddress", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("HttpHeaders.Add", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("HttpRequestHeaders.Add", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("GetEnvironmentVariable", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("GetConnectionString", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("IConfiguration", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("ISecretProvider", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("SecretClient", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("GetSecret", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("SetSecret", StringComparison.OrdinalIgnoreCase) ||
+               methodFullName.Contains("System.Uri", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void AddInvocationArguments(
+        SeparatedSyntaxList<ArgumentSyntax>? arguments,
+        IMethodSymbol targetSymbol,
+        SemanticModel semanticModel,
+        ICollection<InvocationArgumentInfo> sink,
+        CancellationToken ct)
+    {
+        if (arguments is null || arguments.Value.Count == 0) return;
+        var target = GetMethodFullName(targetSymbol);
+        var offset = targetSymbol.IsExtensionMethod && targetSymbol.Parameters.Length == arguments.Value.Count + 1 ? 1 : 0;
+        AddInvocationArguments(arguments.Value, target, semanticModel, sink, ct, targetSymbol.Parameters, offset);
+    }
+
+    private static void AddInvocationArguments(
+        SeparatedSyntaxList<ArgumentSyntax> arguments,
+        string target,
+        SemanticModel semanticModel,
+        ICollection<InvocationArgumentInfo> sink,
+        CancellationToken ct,
+        IReadOnlyList<IParameterSymbol>? parameters = null,
+        int parameterOffset = 0)
+    {
+        for (var i = 0; i < arguments.Count; i++)
+        {
+            var arg = arguments[i];
+            var expr = arg.Expression;
+            if (expr is null) continue;
+
+            var paramIndex = i + parameterOffset;
+            if (parameters is not null && paramIndex < parameters.Count)
+            {
+                var paramType = parameters[paramIndex].Type;
+                var isString = paramType.SpecialType == SpecialType.System_String;
+                var isUri = paramType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                    .Contains("System.Uri", StringComparison.OrdinalIgnoreCase);
+                if (!isString && !isUri)
+                    continue;
+            }
+
+            var resolved = TryResolveStringLiteral(expr, semanticModel, ct, out var value);
+            var sanitized = resolved ? IntegrationSecretRedactor.Redact(value) : null;
+            sink.Add(new InvocationArgumentInfo(target, i, sanitized, resolved));
+        }
+    }
+
+    private static bool TryResolveStringLiteral(
+        ExpressionSyntax expr,
+        SemanticModel semanticModel,
+        CancellationToken ct,
+        out string? value)
+    {
+        value = null;
+        var constant = semanticModel.GetConstantValue(expr, ct);
+        if (constant.HasValue && constant.Value is string s)
+        {
+            value = s;
+            return true;
+        }
+
+        if (expr is LiteralExpressionSyntax literal && literal.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.StringLiteralExpression))
+        {
+            value = literal.Token.ValueText;
+            return true;
+        }
+
+        if (expr is ObjectCreationExpressionSyntax objCreation)
+        {
+            var typeInfo = semanticModel.GetTypeInfo(objCreation.Type, ct).Type;
+            if (typeInfo is not null &&
+                typeInfo.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                    .Contains("System.Uri", StringComparison.OrdinalIgnoreCase))
+            {
+                var args = objCreation.ArgumentList?.Arguments;
+                if (args is not null && args.Value.Count > 0)
+                {
+                    var first = args.Value[0].Expression;
+                    if (TryResolveStringLiteral(first, semanticModel, ct, out var nested))
+                    {
+                        value = nested;
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static List<string> DeserializeStringList(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new List<string>();
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
+        }
+        catch
+        {
+            return new List<string>();
+        }
+    }
 }
 

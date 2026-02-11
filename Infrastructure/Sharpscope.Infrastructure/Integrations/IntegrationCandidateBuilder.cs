@@ -26,7 +26,9 @@ internal sealed class IntegrationCandidateBuilder
     public string Technology { get; set; }
     public string LogicalName { get; }
     public string? Endpoint { get; set; }
+    public string? EndpointSource { get; set; }
     public double Confidence { get; private set; }
+    public Dictionary<string, string> Attributes { get; } = new(StringComparer.Ordinal);
 
     public void AddEvidence(
         IntegrationEvidence evidence,
@@ -37,10 +39,29 @@ internal sealed class IntegrationCandidateBuilder
         if (evidence is null) return;
 
         _evidence.Add(evidence);
-        Confidence = Math.Min(1.0, Confidence + weight);
+        Confidence = Math.Clamp(Confidence + weight, 0.0, 1.0);
 
         if (!string.IsNullOrWhiteSpace(nodeId))
             context.TrackUsage(nodeId!, Id);
+    }
+
+    public void SetAttribute(string key, string value)
+    {
+        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(value)) return;
+
+        if (Attributes.TryGetValue(key, out var existing))
+        {
+            if (string.Equals(existing, value, StringComparison.Ordinal))
+                return;
+
+            var combined = string.Join(",", new[] { existing, value }
+                .Where(v => !string.IsNullOrWhiteSpace(v))
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+            Attributes[key] = combined;
+            return;
+        }
+
+        Attributes[key] = value;
     }
 
     public IntegrationCandidate Build()
@@ -59,9 +80,11 @@ internal sealed class IntegrationCandidateBuilder
             Kind: Kind,
             Technology: Technology,
             LogicalName: LogicalName,
-            Endpoint: Endpoint,
+            Endpoint: IntegrationSecretRedactor.Redact(Endpoint),
+            EndpointSource: EndpointSource,
             Confidence: Confidence,
-            Evidence: orderedEvidence
+            Evidence: orderedEvidence,
+            Attributes: Attributes.Count == 0 ? null : new Dictionary<string, string>(Attributes, StringComparer.Ordinal)
         );
     }
 }

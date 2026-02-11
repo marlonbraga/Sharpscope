@@ -41,7 +41,7 @@ public sealed class AnalyzeSolutionUseCaseTests
         var metrics = MetricsSnapshot.Empty;
         engine.Compute(Arg.Any<CodeGraph>()).Returns(metrics);
         var integrations = Substitute.For<IIntegrationDiscoveryEngine>();
-        integrations.DiscoverAsync(Arg.Any<CodeGraph>(), Arg.Any<DirectoryInfo>(), Arg.Any<CancellationToken>())
+        integrations.DiscoverAsync(Arg.Any<CodeGraph>(), Arg.Any<DirectoryInfo>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(IntegrationsSnapshot.Empty));
 
         var sut = new AnalyzeSolutionUseCase(
@@ -56,7 +56,8 @@ public sealed class AnalyzeSolutionUseCaseTests
             Path: work.FullName,
             RepoUrl: null,
             Format: "json",
-            OutputPath: null
+            OutputPath: null,
+            IntegrationProfile: "work"
         );
 
         // Act
@@ -100,7 +101,8 @@ public sealed class AnalyzeSolutionUseCaseTests
             Path: null,
             RepoUrl: "https://example/repo.git",
             Format: "md",
-            OutputPath: null
+            OutputPath: null,
+            IntegrationProfile: "work"
         );
 
         var snapshot = await sut.ExecuteAsync(req, CancellationToken.None);
@@ -117,7 +119,7 @@ public sealed class AnalyzeSolutionUseCaseTests
     public async Task ExecuteAsync_BothInputs_Throws()
     {
         var sut = NewSut();
-        var req = new AnalyzeRequest("c:\\x", "https://y", "json", null);
+        var req = new AnalyzeRequest("c:\\x", "https://y", "json", null, "work");
 
         await Should.ThrowAsync<ArgumentException>(() => sut.ExecuteAsync(req, CancellationToken.None));
     }
@@ -126,7 +128,7 @@ public sealed class AnalyzeSolutionUseCaseTests
     public async Task ExecuteAsync_NoInputs_Throws()
     {
         var sut = NewSut();
-        var req = new AnalyzeRequest(null, null, "json", null);
+        var req = new AnalyzeRequest(null, null, "json", null, "work");
 
         await Should.ThrowAsync<ArgumentException>(() => sut.ExecuteAsync(req, CancellationToken.None));
     }
@@ -150,7 +152,7 @@ public sealed class AnalyzeSolutionUseCaseTests
             Substitute.For<IMetricsEngine>(),
             StubIntegrations());
 
-        var req = new AnalyzeRequest(work.FullName, null, "json", null);
+        var req = new AnalyzeRequest(work.FullName, null, "json", null, "work");
 
         await Should.ThrowAsync<NotSupportedException>(() => sut.ExecuteAsync(req, CancellationToken.None));
     }
@@ -211,7 +213,7 @@ public sealed class AnalyzeSolutionUseCaseTests
     private static IIntegrationDiscoveryEngine StubIntegrations()
     {
         var e = Substitute.For<IIntegrationDiscoveryEngine>();
-        e.DiscoverAsync(Arg.Any<CodeGraph>(), Arg.Any<DirectoryInfo>(), Arg.Any<CancellationToken>())
+        e.DiscoverAsync(Arg.Any<CodeGraph>(), Arg.Any<DirectoryInfo>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(IntegrationsSnapshot.Empty));
         return e;
     }

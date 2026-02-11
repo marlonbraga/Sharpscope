@@ -20,6 +20,7 @@ public static class GraphAttributeKeys
     public const string MethodIsPublic = "isPublic";
     public const string MethodAccessedFields = "accessedFields";
     public const string MethodExternalCalls = "externalCalls";
+    public const string MethodInvocationArguments = "invocationArguments";
 
     public const string ProjectRelativePath = "projectRelativePath";
     public const string ProjectName = "projectName";

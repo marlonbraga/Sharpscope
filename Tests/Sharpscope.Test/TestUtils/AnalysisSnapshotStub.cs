@@ -14,7 +14,8 @@ public static class AnalysisSnapshotStub
                 TimestampUtc: DateTimeOffset.UtcNow,
                 ToolVersion: "test",
                 MetricsSchemaVersion: "1",
-                IntegrationsSchemaVersion: "1"
+                IntegrationsSchemaVersion: "1",
+                IntegrationProfile: "work"
             ),
             Graph: CodeGraph.Empty,
             Metrics: MetricsSnapshot.Empty,

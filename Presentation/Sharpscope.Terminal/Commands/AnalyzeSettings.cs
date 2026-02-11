@@ -28,4 +28,8 @@ public sealed class AnalyzeSettings : CommandSettings
     [CommandOption("-t|--print")]
     [Description("Print result to console: true|false (default: false)")]
     public string? Print { get; init; }
+
+    [CommandOption("--profile")]
+    [Description("Integration discovery profile (default: work)")]
+    public string? Profile { get; init; }
 }

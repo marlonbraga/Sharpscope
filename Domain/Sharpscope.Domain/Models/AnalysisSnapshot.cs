@@ -23,5 +23,6 @@ public sealed record AnalysisMetadata(
     DateTimeOffset TimestampUtc,
     string ToolVersion,
     string MetricsSchemaVersion,
-    string IntegrationsSchemaVersion
+    string IntegrationsSchemaVersion,
+    string IntegrationProfile
 );

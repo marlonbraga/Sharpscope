@@ -22,7 +22,8 @@ internal static class RequestMapper
             Path: null,
             RepoUrl: dto.RepoUrl,
             Format: format,
-            OutputPath: outputPath
+            OutputPath: outputPath,
+            IntegrationProfile: "work"
         );
     }
 }
