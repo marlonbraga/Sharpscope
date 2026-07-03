@@ -1,0 +1,5 @@
+<Project>
+  <!-- Intentionally does not import the repo-root Directory.Build.props: these Samples.* projects
+       are synthetic fixtures used to test Sharpscope's own integration-discovery engine, not
+       product code, so they are not subject to the Code Quality gate (SonarAnalyzer.CSharp). -->
+</Project>
