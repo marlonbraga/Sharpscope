@@ -1,0 +1,6 @@
+root = true
+
+[*.cs]
+# Code Quality principle (constitution): cognitive complexity per method MUST NOT exceed 15.
+# Threshold is set in SonarLint.xml; this makes a violation a build error, not a warning.
+dotnet_diagnostic.S3776.severity = error

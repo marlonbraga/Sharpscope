@@ -3,4 +3,14 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
+
+  <!-- Code Quality principle (constitution): cognitive complexity gate via SonarAnalyzer.CSharp.
+       Threshold (S3776 = 15) is configured in SonarLint.xml; severity is set to error in .editorconfig. -->
+  <ItemGroup>
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.28.0.143324">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)SonarLint.xml" />
+  </ItemGroup>
 </Project>

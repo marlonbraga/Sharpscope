@@ -132,6 +132,11 @@ public sealed class IntegrationDiscoveryEngine : IIntegrationDiscoveryEngine
         return filtered;
     }
 
+    // Pre-existing legacy debt: cognitive complexity exceeds the 15 allowed by the Code Quality
+    // principle (constitution). Suppressed here rather than lowering the gate for everyone;
+    // refactor this method (with a characterization test first, per Principle I) the next time
+    // it needs to change.
+#pragma warning disable S3776
     private static IReadOnlyDictionary<string, string>? MergeAttributes(IEnumerable<IntegrationCandidate> candidates)
     {
         var dict = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -158,6 +163,7 @@ public sealed class IntegrationDiscoveryEngine : IIntegrationDiscoveryEngine
 
         return dict.Count == 0 ? null : dict;
     }
+#pragma warning restore S3776
 }
 
 internal sealed class IntegrationDiscoveryContext
@@ -344,6 +350,11 @@ internal static class PackageReferenceScanner
 
 internal static class ConfigScanner
 {
+    // Pre-existing legacy debt: cognitive complexity exceeds the 15 allowed by the Code Quality
+    // principle (constitution). Suppressed here rather than lowering the gate for everyone;
+    // refactor this method (with a characterization test first, per Principle I) the next time
+    // it needs to change.
+#pragma warning disable S3776
     public static async Task<IReadOnlyList<ConfigEntry>> ScanAsync(DirectoryInfo root, CancellationToken ct)
     {
         var entries = new List<ConfigEntry>();
@@ -406,7 +417,13 @@ internal static class ConfigScanner
             .ThenBy(e => e.FilePath, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+#pragma warning restore S3776
 
+    // Pre-existing legacy debt: cognitive complexity exceeds the 15 allowed by the Code Quality
+    // principle (constitution). Suppressed here rather than lowering the gate for everyone;
+    // refactor this method (with a characterization test first, per Principle I) the next time
+    // it needs to change.
+#pragma warning disable S3776
     private static IEnumerable<(string key, string? value)> EnumerateJsonEntries(JsonElement element, string? path)
     {
         if (element.ValueKind == JsonValueKind.Object)
@@ -434,6 +451,7 @@ internal static class ConfigScanner
             yield return (path ?? string.Empty, element.ToString());
         }
     }
+#pragma warning restore S3776
 }
 
 internal static class GraphSignalScanner
